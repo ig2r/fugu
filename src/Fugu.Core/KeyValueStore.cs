@@ -1,4 +1,6 @@
 ﻿using Fugu.Core.Actors;
+using Fugu.Core.Actors.Messages;
+using System.Threading.Channels;
 
 namespace Fugu.Core;
 
@@ -29,6 +31,31 @@ public sealed class KeyValueStore : IAsyncDisposable
 
     public static ValueTask<KeyValueStore> CreateAsync(TableSet tableSet)
     {
+        var allocateWriteBatchChannel = Channel.CreateBounded<DummyMessage>(capacity: 1);
+        var writeWriteBatchChannel = Channel.CreateBounded<DummyMessage>(capacity: 1);
+        var updateIndexChannel = Channel.CreateBounded<DummyMessage>(capacity: 1);
+        var indexUpdatedChannel = Channel.CreateBounded<DummyMessage>(new BoundedChannelOptions(capacity: 1)
+        {
+            FullMode = BoundedChannelFullMode.DropOldest,
+        });
+
+        var snapshotsUpdatedChannel = Channel.CreateBounded<DummyMessage>(new BoundedChannelOptions(capacity: 1)
+        {
+            FullMode = BoundedChannelFullMode.DropOldest,
+        });
+
+        var getSnapshotChannel = Channel.CreateBounded<DummyMessage>(capacity: 1);
+        var releaseSnapshotChannel = Channel.CreateBounded<DummyMessage>(capacity: 1);
+
+        var updateSegmentStatsChannel = Channel.CreateBounded<DummyMessage>(capacity: 1);
+        var segmentStatsUpdatedChannel = Channel.CreateBounded<DummyMessage>(new BoundedChannelOptions(capacity: 1)
+        {
+            FullMode = BoundedChannelFullMode.DropOldest,
+        });
+
+        var segmentEmptiedChannel = Channel.CreateUnbounded<DummyMessage>();
+        var segmentEvictedChannel = Channel.CreateUnbounded<DummyMessage>();
+
         throw new NotImplementedException();
     }
 
