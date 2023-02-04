@@ -31,6 +31,7 @@ public sealed class KeyValueStore : IAsyncDisposable
 
     public static ValueTask<KeyValueStore> CreateAsync(TableSet tableSet)
     {
+        // Create channels for message-passing between actors
         var allocateWriteBatchChannel = Channel.CreateBounded<DummyMessage>(capacity: 1);
         var writeWriteBatchChannel = Channel.CreateBounded<DummyMessage>(capacity: 1);
         var updateIndexChannel = Channel.CreateBounded<DummyMessage>(capacity: 1);
@@ -44,6 +45,7 @@ public sealed class KeyValueStore : IAsyncDisposable
             FullMode = BoundedChannelFullMode.DropOldest,
         });
 
+        var awaitClockChannel = Channel.CreateBounded<DummyMessage>(capacity: 1);
         var getSnapshotChannel = Channel.CreateBounded<DummyMessage>(capacity: 1);
         var releaseSnapshotChannel = Channel.CreateBounded<DummyMessage>(capacity: 1);
 
@@ -55,6 +57,40 @@ public sealed class KeyValueStore : IAsyncDisposable
 
         var segmentEmptiedChannel = Channel.CreateUnbounded<DummyMessage>();
         var segmentEvictedChannel = Channel.CreateUnbounded<DummyMessage>();
+
+        // Create actors
+        var allocationActor = new AllocationActor(
+            allocateWriteBatchChannel.Reader,
+            segmentEvictedChannel.Reader,
+            writeWriteBatchChannel.Writer);
+
+        var writerActor = new WriterActor(
+            writeWriteBatchChannel.Reader,
+            updateIndexChannel.Writer);
+
+        var indexActor = new IndexActor(
+            updateIndexChannel.Reader,
+            indexUpdatedChannel.Writer,
+            updateSegmentStatsChannel.Writer);
+
+        var snapshotsActor = new SnapshotsActor(
+            indexUpdatedChannel.Reader,
+            awaitClockChannel.Reader,
+            getSnapshotChannel.Reader,
+            releaseSnapshotChannel.Reader,
+            snapshotsUpdatedChannel.Writer);
+
+        var segmentStatsActor = new SegmentStatsActor(
+            updateSegmentStatsChannel.Reader,
+            segmentStatsUpdatedChannel.Writer,
+            segmentEmptiedChannel.Writer);
+
+        var compactionActor = new CompactionActor(
+            segmentStatsUpdatedChannel.Reader,
+            segmentEmptiedChannel.Reader,
+            snapshotsUpdatedChannel.Reader,
+            updateIndexChannel.Writer,
+            segmentEvictedChannel.Writer);
 
         throw new NotImplementedException();
     }
