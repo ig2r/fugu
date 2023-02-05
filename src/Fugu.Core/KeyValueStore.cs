@@ -32,28 +32,23 @@ public sealed class KeyValueStore : IAsyncDisposable
     public static ValueTask<KeyValueStore> CreateAsync(TableSet tableSet)
     {
         // Create channels for message-passing between actors
+        var dropOldest = new BoundedChannelOptions(capacity: 1)
+        {
+            FullMode = BoundedChannelFullMode.DropOldest
+        };
+
         var allocateWriteBatchChannel = Channel.CreateBounded<DummyMessage>(capacity: 1);
         var writeWriteBatchChannel = Channel.CreateBounded<DummyMessage>(capacity: 1);
         var updateIndexChannel = Channel.CreateBounded<DummyMessage>(capacity: 1);
-        var indexUpdatedChannel = Channel.CreateBounded<DummyMessage>(new BoundedChannelOptions(capacity: 1)
-        {
-            FullMode = BoundedChannelFullMode.DropOldest,
-        });
-
-        var snapshotsUpdatedChannel = Channel.CreateBounded<DummyMessage>(new BoundedChannelOptions(capacity: 1)
-        {
-            FullMode = BoundedChannelFullMode.DropOldest,
-        });
+        var indexUpdatedChannel = Channel.CreateBounded<DummyMessage>(dropOldest);
+        var snapshotsUpdatedChannel = Channel.CreateBounded<DummyMessage>(dropOldest);
 
         var awaitClockChannel = Channel.CreateBounded<DummyMessage>(capacity: 1);
         var getSnapshotChannel = Channel.CreateBounded<DummyMessage>(capacity: 1);
         var releaseSnapshotChannel = Channel.CreateBounded<DummyMessage>(capacity: 1);
 
         var updateSegmentStatsChannel = Channel.CreateBounded<DummyMessage>(capacity: 1);
-        var segmentStatsUpdatedChannel = Channel.CreateBounded<DummyMessage>(new BoundedChannelOptions(capacity: 1)
-        {
-            FullMode = BoundedChannelFullMode.DropOldest,
-        });
+        var segmentStatsUpdatedChannel = Channel.CreateBounded<DummyMessage>(dropOldest);
 
         var segmentEmptiedChannel = Channel.CreateUnbounded<DummyMessage>();
         var segmentEvictedChannel = Channel.CreateUnbounded<DummyMessage>();
