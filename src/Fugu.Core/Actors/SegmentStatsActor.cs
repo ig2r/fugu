@@ -32,5 +32,9 @@ public class SegmentStatsActor : Actor
             {
             }
         }
+
+        // Input channel has completed, propagate completion
+        _segmentStatsUpdatedChannelWriter.Complete();
+        _segmentEmptiedChannelWriter.Complete();
     }
 }

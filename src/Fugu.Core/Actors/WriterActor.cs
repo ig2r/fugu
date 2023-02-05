@@ -30,5 +30,8 @@ public class WriterActor : Actor
 
             }
         }
+
+        // Input channel has completed, propagate completion
+        _updateIndexChannelWriter.Complete();
     }
 }

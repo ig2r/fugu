@@ -9,7 +9,7 @@ public class CompactionActor : Actor
     private readonly ChannelReader<DummyMessage> _segmentEmptiedChannelReader;
     private readonly ChannelReader<DummyMessage> _snapshotsUpdatedChannelReader;
     private readonly ChannelWriter<DummyMessage> _updateIndexChannelWriter;
-    private readonly ChannelWriter<DummyMessage> _writersegmentEvictedChannelWriter;
+    private readonly ChannelWriter<DummyMessage> _segmentEvictedChannelWriter;
 
     private readonly SemaphoreSlim _semaphore = new SemaphoreSlim(1);
 
@@ -18,21 +18,24 @@ public class CompactionActor : Actor
         ChannelReader<DummyMessage> segmentEmptiedChannelReader,
         ChannelReader<DummyMessage> snapshotsUpdatedChannelReader,
         ChannelWriter<DummyMessage> updateIndexChannelWriter,
-        ChannelWriter<DummyMessage> writersegmentEvictedChannelWriter)
+        ChannelWriter<DummyMessage> segmentEvictedChannelWriter)
     {
         _segmentStatsUpdatedChannelReader = segmentStatsUpdatedChannelReader;
         _segmentEmptiedChannelReader = segmentEmptiedChannelReader;
         _snapshotsUpdatedChannelReader = snapshotsUpdatedChannelReader;
         _updateIndexChannelWriter = updateIndexChannelWriter;
-        _writersegmentEvictedChannelWriter = writersegmentEvictedChannelWriter;
+        _segmentEvictedChannelWriter = segmentEvictedChannelWriter;
     }
 
-    public override Task RunAsync()
+    public override async Task RunAsync()
     {
-        return Task.WhenAll(
+        await Task.WhenAll(
             HandleSegmentStatsUpdatedMessagesAsync(),
             HandleSegmentEmptiedMessagesAsync(),
             HandleSnapshotsUpdatedMessagesAsync());
+
+        // All input channels have completed, propagate completion
+        _segmentEvictedChannelWriter.Complete();
     }
 
     private async Task HandleSegmentStatsUpdatedMessagesAsync()

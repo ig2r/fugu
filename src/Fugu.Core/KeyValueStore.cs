@@ -12,6 +12,11 @@ public sealed class KeyValueStore : IAsyncDisposable
     private readonly SnapshotsActor _snapshotsActor;
     private readonly SegmentStatsActor _segmentStatsActor;
     private readonly CompactionActor _compactionActor;
+    private readonly ChannelWriter<DummyMessage> _allocateWriteBatchChannelWriter;
+    private readonly ChannelWriter<DummyMessage> _getSnapshotChannelWriter;
+    private readonly ChannelWriter<DummyMessage> _releaseSnapshotChannelWriter;
+    private readonly ChannelWriter<DummyMessage> _awaitClockChannelWriter;
+    private readonly Task _allActorsCompletion;
 
     public KeyValueStore(
         AllocationActor allocationActor,
@@ -19,7 +24,12 @@ public sealed class KeyValueStore : IAsyncDisposable
         IndexActor indexActor,
         SnapshotsActor snapshotsActor,
         SegmentStatsActor segmentStatsActor,
-        CompactionActor compactionActor)
+        CompactionActor compactionActor,
+        ChannelWriter<DummyMessage> allocateWriteBatchChannelWriter,
+        ChannelWriter<DummyMessage> getSnapshotChannelWriter,
+        ChannelWriter<DummyMessage> releaseSnapshotChannelWriter,
+        ChannelWriter<DummyMessage> awaitClockChannelWriter,
+        Task allActorsCompletion)
     {
         _allocationActor = allocationActor;
         _writerActor = writerActor;
@@ -27,6 +37,11 @@ public sealed class KeyValueStore : IAsyncDisposable
         _snapshotsActor = snapshotsActor;
         _segmentStatsActor = segmentStatsActor;
         _compactionActor = compactionActor;
+        _allocateWriteBatchChannelWriter = allocateWriteBatchChannelWriter;
+        _getSnapshotChannelWriter = getSnapshotChannelWriter;
+        _releaseSnapshotChannelWriter = releaseSnapshotChannelWriter;
+        _awaitClockChannelWriter = awaitClockChannelWriter;
+        _allActorsCompletion = allActorsCompletion;
     }
 
     public static ValueTask<KeyValueStore> CreateAsync(TableSet tableSet)
@@ -88,24 +103,43 @@ public sealed class KeyValueStore : IAsyncDisposable
             segmentEvictedChannel.Writer);
 
         // Start bootstrap actors, load data, then start all remaining actors
-        var bootstrapActorsTask = Task.WhenAll(
+        var bootstrapActorsCompletion = Task.WhenAll(
             indexActor.RunAsync(),
             segmentStatsActor.RunAsync());
 
         // TODO: enumerate tables in table set and populate index
 
-        var remainingActorsTask = Task.WhenAll(
+        var allActorsCompletion = Task.WhenAll(
+            bootstrapActorsCompletion,
             allocationActor.RunAsync(),
             writerActor.RunAsync(),
             snapshotsActor.RunAsync(),
             compactionActor.RunAsync());
 
-        throw new NotImplementedException();
+        var store = new KeyValueStore(
+            allocationActor,
+            writerActor,
+            indexActor,
+            snapshotsActor,
+            segmentStatsActor,
+            compactionActor,
+            allocateWriteBatchChannel.Writer,
+            getSnapshotChannel.Writer,
+            releaseSnapshotChannel.Writer,
+            awaitClockChannel.Writer,
+            allActorsCompletion);
+
+        return ValueTask.FromResult(store);
     }
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
-        throw new NotImplementedException();
+        _allocateWriteBatchChannelWriter.Complete();
+        _getSnapshotChannelWriter.Complete();
+        _releaseSnapshotChannelWriter.Complete();
+        _awaitClockChannelWriter.Complete();
+
+        await _allActorsCompletion;
     }
 
     public ValueTask<Snapshot> GetSnapshotAsync()

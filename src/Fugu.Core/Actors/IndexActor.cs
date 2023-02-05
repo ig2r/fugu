@@ -33,5 +33,9 @@ public class IndexActor : Actor
 
             }
         }
+
+        // Input channel has completed, propagate completion
+        _indexUpdatedChannelWriter.Complete();
+        _updateSegmentStatsChannelWriter.Complete();
     }
 }

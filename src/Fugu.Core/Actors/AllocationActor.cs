@@ -46,6 +46,9 @@ public class AllocationActor : Actor
                 _semaphore.Release();
             }
         }
+
+        // Input channel has completed, propagate completion
+        _writeWriteBatchChannelWriter.Complete();
     }
 
     private async Task HandleSegmentEvictedMessagesAsync()

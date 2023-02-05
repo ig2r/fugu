@@ -54,6 +54,9 @@ public class SnapshotsActor : Actor
                 _semaphore.Release();
             }
         }
+
+        // Input channel has completed, propagate completion
+        _snapshotsUpdatedChannelWriter.Complete();
     }
 
     private async Task HandleAwaitClockMessagesAsync()
