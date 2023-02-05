@@ -21,6 +21,16 @@ public class SegmentStatsActor : Actor
 
     public override Task RunAsync()
     {
-        throw new NotImplementedException();
+        return HandleUpdateSegmentStatsMessagesAsync();
+    }
+
+    private async Task HandleUpdateSegmentStatsMessagesAsync()
+    {
+        while (await _updateSegmentStatsChannelReader.WaitToReadAsync())
+        {
+            if (_updateSegmentStatsChannelReader.TryRead(out var message))
+            {
+            }
+        }
     }
 }

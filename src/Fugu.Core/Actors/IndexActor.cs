@@ -21,6 +21,17 @@ public class IndexActor : Actor
 
     public override Task RunAsync()
     {
-        throw new NotImplementedException();
+        return HandleUpdateIndexMessagesAsync();
+    }
+
+    private async Task HandleUpdateIndexMessagesAsync()
+    {
+        while (await _updateIndexChannelReader.WaitToReadAsync())
+        {
+            if (_updateIndexChannelReader.TryRead(out var message))
+            {
+
+            }
+        }
     }
 }

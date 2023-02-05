@@ -11,6 +11,8 @@ public class SnapshotsActor : Actor
     private readonly ChannelReader<DummyMessage> _releaseSnapshotChannelReader;
     private readonly ChannelWriter<DummyMessage> _snapshotsUpdatedChannelWriter;
 
+    private readonly SemaphoreSlim _semaphore = new SemaphoreSlim(1);
+
     public SnapshotsActor(
         ChannelReader<DummyMessage> indexUpdatedChannelReader,
         ChannelReader<DummyMessage> awaitClockChannelReader,
@@ -27,6 +29,90 @@ public class SnapshotsActor : Actor
 
     public override Task RunAsync()
     {
-        throw new NotImplementedException();
+        return Task.WhenAll(
+            HandleIndexUpdatedMessagesAsync(),
+            HandleAwaitClockMessagesAsync(),
+            HandleGetSnapshotMessagesAsync(),
+            HandleReleaseSnapshotMessagesAsync());
+    }
+
+    private async Task HandleIndexUpdatedMessagesAsync()
+    {
+        while (await _indexUpdatedChannelReader.WaitToReadAsync())
+        {
+            await _semaphore.WaitAsync();
+
+            try
+            {
+                if (_indexUpdatedChannelReader.TryRead(out var message))
+                {
+
+                }
+            }
+            finally
+            {
+                _semaphore.Release();
+            }
+        }
+    }
+
+    private async Task HandleAwaitClockMessagesAsync()
+    {
+        while (await _awaitClockChannelReader.WaitToReadAsync())
+        {
+            await _semaphore.WaitAsync();
+
+            try
+            {
+                if (_awaitClockChannelReader.TryRead(out var message))
+                {
+
+                }
+            }
+            finally
+            {
+                _semaphore.Release();
+            }
+        }
+    }
+
+    private async Task HandleGetSnapshotMessagesAsync()
+    {
+        while (await _getSnapshotChannelReader.WaitToReadAsync())
+        {
+            await _semaphore.WaitAsync();
+
+            try
+            {
+                if (_getSnapshotChannelReader.TryRead(out var message))
+                {
+
+                }
+            }
+            finally
+            {
+                _semaphore.Release();
+            }
+        }
+    }
+
+    private async Task HandleReleaseSnapshotMessagesAsync()
+    {
+        while (await _releaseSnapshotChannelReader.WaitToReadAsync())
+        {
+            await _semaphore.WaitAsync();
+
+            try
+            {
+                if (_releaseSnapshotChannelReader.TryRead(out var message))
+                {
+
+                }
+            }
+            finally
+            {
+                _semaphore.Release();
+            }
+        }
     }
 }

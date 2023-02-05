@@ -18,6 +18,17 @@ public class WriterActor : Actor
 
     public override Task RunAsync()
     {
-        throw new NotImplementedException();
+        return HandleWriteWriteBatchMessagesAsync();
+    }
+
+    private async Task HandleWriteWriteBatchMessagesAsync()
+    {
+        while (await _writeWriteBatchChannelReader.WaitToReadAsync())
+        {
+            if (_writeWriteBatchChannelReader.TryRead(out var message))
+            {
+
+            }
+        }
     }
 }

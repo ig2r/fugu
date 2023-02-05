@@ -11,6 +11,8 @@ public class CompactionActor : Actor
     private readonly ChannelWriter<DummyMessage> _updateIndexChannelWriter;
     private readonly ChannelWriter<DummyMessage> _writersegmentEvictedChannelWriter;
 
+    private readonly SemaphoreSlim _semaphore = new SemaphoreSlim(1);
+
     public CompactionActor(
         ChannelReader<DummyMessage> segmentStatsUpdatedChannelReader,
         ChannelReader<DummyMessage> segmentEmptiedChannelReader,
@@ -27,6 +29,69 @@ public class CompactionActor : Actor
 
     public override Task RunAsync()
     {
-        throw new NotImplementedException();
+        return Task.WhenAll(
+            HandleSegmentStatsUpdatedMessagesAsync(),
+            HandleSegmentEmptiedMessagesAsync(),
+            HandleSnapshotsUpdatedMessagesAsync());
+    }
+
+    private async Task HandleSegmentStatsUpdatedMessagesAsync()
+    {
+        while (await _segmentStatsUpdatedChannelReader.WaitToReadAsync())
+        {
+            await _semaphore.WaitAsync();
+
+            try
+            {
+                if (_segmentStatsUpdatedChannelReader.TryRead(out var message))
+                {
+
+                }
+            }
+            finally
+            {
+                _semaphore.Release();
+            }
+        }
+    }
+
+    private async Task HandleSegmentEmptiedMessagesAsync()
+    {
+        while (await _segmentEmptiedChannelReader.WaitToReadAsync())
+        {
+            await _semaphore.WaitAsync();
+
+            try
+            {
+                if (_segmentEmptiedChannelReader.TryRead(out var message))
+                {
+
+                }
+            }
+            finally
+            {
+                _semaphore.Release();
+            }
+        }
+    }
+
+    private async Task HandleSnapshotsUpdatedMessagesAsync()
+    {
+        while (await _snapshotsUpdatedChannelReader.WaitToReadAsync())
+        {
+            await _semaphore.WaitAsync();
+
+            try
+            {
+                if (_snapshotsUpdatedChannelReader.TryRead(out var message))
+                {
+
+                }
+            }
+            finally
+            {
+                _semaphore.Release();
+            }
+        }
     }
 }
