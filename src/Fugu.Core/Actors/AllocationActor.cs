@@ -1,18 +1,20 @@
 ﻿using Fugu.Core.Actors.Messages;
+using Fugu.Core.Common;
 using System.Threading.Channels;
 
 namespace Fugu.Core.Actors;
 
 public class AllocationActor : Actor
 {
-    private readonly ChannelReader<DummyMessage> _allocateWriteBatchChannelReader;
+    private readonly ChannelReader<AllocateWriteBatchMessage> _allocateWriteBatchChannelReader;
     private readonly ChannelReader<DummyMessage> _segmentEvictedChannelReader;
     private readonly ChannelWriter<DummyMessage> _writeWriteBatchChannelWriter;
 
     private readonly SemaphoreSlim _semaphore = new SemaphoreSlim(1);
+    private VectorClock _clock = new VectorClock();
 
     public AllocationActor(
-        ChannelReader<DummyMessage> allocateWriteBatchChannelReader,
+        ChannelReader<AllocateWriteBatchMessage> allocateWriteBatchChannelReader,
         ChannelReader<DummyMessage> segmentEvictedChannelReader,
         ChannelWriter<DummyMessage> writeWriteBatchChannelWriter)
     {
@@ -38,7 +40,8 @@ public class AllocationActor : Actor
             {
                 if (_allocateWriteBatchChannelReader.TryRead(out var message))
                 {
-
+                    _clock = _clock with { Write = _clock.Write + 1 };
+                    await message.ReplyChannelWriter.WriteAsync(_clock);
                 }
             }
             finally
@@ -61,7 +64,6 @@ public class AllocationActor : Actor
             {
                 if (_segmentEvictedChannelReader.TryRead(out var message))
                 {
-
                 }
             }
             finally
