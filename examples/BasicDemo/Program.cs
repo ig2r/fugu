@@ -1,7 +1,7 @@
 ﻿using Fugu.Core;
 using System.Text;
 
-var tableSet = new TableSet();
+var tableSet = new InMemoryTableSet();
 
 await using (var store = await KeyValueStore.CreateAsync(tableSet))
 {
