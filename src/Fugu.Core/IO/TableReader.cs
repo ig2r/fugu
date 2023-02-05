@@ -8,7 +8,7 @@ public class TableReader
     private readonly Table _table;
 
     public TableReader(Table table)
-	{
+    {
         _table = table;
     }
 

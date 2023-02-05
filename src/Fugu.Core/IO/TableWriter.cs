@@ -9,7 +9,7 @@ public class TableWriter
     private readonly IBufferWriter<byte> _bufferWriter;
 
     public TableWriter(IBufferWriter<byte> bufferWriter)
-	{
+    {
         _bufferWriter = bufferWriter;
     }
 
