@@ -3,7 +3,7 @@ using System.Threading.Channels;
 
 namespace Fugu.Core.Actors;
 
-public class SnapshotsActor
+public class SnapshotsActor : Actor
 {
     private readonly ChannelReader<DummyMessage> _indexUpdatedChannelReader;
     private readonly ChannelReader<DummyMessage> _awaitClockChannelReader;
@@ -23,5 +23,10 @@ public class SnapshotsActor
         _getSnapshotChannelReader = getSnapshotChannelReader;
         _releaseSnapshotChannelReader = releaseSnapshotChannelReader;
         _snapshotsUpdatedChannelWriter = snapshotsUpdatedChannelWriter;
+    }
+
+    public override Task RunAsync()
+    {
+        throw new NotImplementedException();
     }
 }

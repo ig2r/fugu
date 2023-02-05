@@ -3,7 +3,7 @@ using System.Threading.Channels;
 
 namespace Fugu.Core.Actors;
 
-public class IndexActor
+public class IndexActor : Actor
 {
     private readonly ChannelReader<DummyMessage> _updateIndexChannelReader;
     private readonly ChannelWriter<DummyMessage> _indexUpdatedChannelWriter;
@@ -17,5 +17,10 @@ public class IndexActor
         _updateIndexChannelReader = updateIndexChannelReader;
         _indexUpdatedChannelWriter = indexUpdatedChannelWriter;
         _updateSegmentStatsChannelWriter = updateSegmentStatsChannelWriter;
+    }
+
+    public override Task RunAsync()
+    {
+        throw new NotImplementedException();
     }
 }

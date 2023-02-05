@@ -3,7 +3,7 @@ using System.Threading.Channels;
 
 namespace Fugu.Core.Actors;
 
-public class WriterActor
+public class WriterActor : Actor
 {
     private readonly ChannelReader<DummyMessage> _writeWriteBatchChannelReader;
     private readonly ChannelWriter<DummyMessage> _updateIndexChannelWriter;
@@ -14,5 +14,10 @@ public class WriterActor
     {
         _writeWriteBatchChannelReader = writeWriteBatchChannelReader;
         _updateIndexChannelWriter = updateIndexChannelWriter;
+    }
+
+    public override Task RunAsync()
+    {
+        throw new NotImplementedException();
     }
 }

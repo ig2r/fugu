@@ -3,11 +3,13 @@ using System.Threading.Channels;
 
 namespace Fugu.Core.Actors;
 
-public class AllocationActor
+public class AllocationActor : Actor
 {
     private readonly ChannelReader<DummyMessage> _allocateWriteBatchChannelReader;
     private readonly ChannelReader<DummyMessage> _segmentEvictedChannelReader;
     private readonly ChannelWriter<DummyMessage> _writeWriteBatchChannelWriter;
+
+    private readonly SemaphoreSlim _semaphore = new SemaphoreSlim(1);
 
     public AllocationActor(
         ChannelReader<DummyMessage> allocateWriteBatchChannelReader,
@@ -17,5 +19,52 @@ public class AllocationActor
         _allocateWriteBatchChannelReader = allocateWriteBatchChannelReader;
         _segmentEvictedChannelReader = segmentEvictedChannelReader;
         _writeWriteBatchChannelWriter = writeWriteBatchChannelWriter;
+    }
+
+    public override Task RunAsync()
+    {
+        return Task.WhenAll(
+            HandleAllocateWriteBatchMessagesAsync(),
+            HandleSegmentEvictedMessagesAsync());
+    }
+
+    private async Task HandleAllocateWriteBatchMessagesAsync()
+    {
+        while (await _allocateWriteBatchChannelReader.WaitToReadAsync())
+        {
+            await _semaphore.WaitAsync();
+
+            try
+            {
+                if (_allocateWriteBatchChannelReader.TryRead(out var message))
+                {
+
+                }
+            }
+            finally
+            {
+                _semaphore.Release();
+            }
+        }
+    }
+
+    private async Task HandleSegmentEvictedMessagesAsync()
+    {
+        while (await _segmentEvictedChannelReader.WaitToReadAsync())
+        {
+            await _semaphore.WaitAsync();
+
+            try
+            {
+                if (_segmentEvictedChannelReader.TryRead(out var message))
+                {
+
+                }
+            }
+            finally
+            {
+                _semaphore.Release();
+            }
+        }
     }
 }

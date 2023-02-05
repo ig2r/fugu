@@ -92,6 +92,19 @@ public sealed class KeyValueStore : IAsyncDisposable
             updateIndexChannel.Writer,
             segmentEvictedChannel.Writer);
 
+        // Start bootstrap actors, load data, then start all remaining actors
+        var bootstrapActorsTask = Task.WhenAll(
+            indexActor.RunAsync(),
+            segmentStatsActor.RunAsync());
+
+        // TODO: enumerate tables in table set and populate index
+
+        var remainingActorsTask = Task.WhenAll(
+            allocationActor.RunAsync(),
+            writerActor.RunAsync(),
+            snapshotsActor.RunAsync(),
+            compactionActor.RunAsync());
+
         throw new NotImplementedException();
     }
 

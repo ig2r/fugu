@@ -3,7 +3,7 @@ using System.Threading.Channels;
 
 namespace Fugu.Core.Actors;
 
-public class CompactionActor
+public class CompactionActor : Actor
 {
     private readonly ChannelReader<DummyMessage> _segmentStatsUpdatedChannelReader;
     private readonly ChannelReader<DummyMessage> _segmentEmptiedChannelReader;
@@ -23,5 +23,10 @@ public class CompactionActor
         _snapshotsUpdatedChannelReader = snapshotsUpdatedChannelReader;
         _updateIndexChannelWriter = updateIndexChannelWriter;
         _writersegmentEvictedChannelWriter = writersegmentEvictedChannelWriter;
+    }
+
+    public override Task RunAsync()
+    {
+        throw new NotImplementedException();
     }
 }
