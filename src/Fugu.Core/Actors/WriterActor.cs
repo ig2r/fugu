@@ -38,7 +38,12 @@ public class WriterActor : Actor
                     // Close out previous output table
                     if (_outputTable is not null)
                     {
-                        // TODO: write trailer
+                        var segmentTrailer = new SegmentTrailer
+                        {
+                            Discriminator = RecordDiscriminator.SegmentTrailer,
+                        };
+
+                        _tableWriter!.Write(in segmentTrailer);
                     }
 
                     // Initialize new output table
@@ -58,6 +63,7 @@ public class WriterActor : Actor
 
                 var commitHeader = new CommitHeader
                 {
+                    Discriminator = RecordDiscriminator.CommitHeader,
                     Count = message.Batch.PendingPuts.Count + message.Batch.PendingRemovals.Count,
                 };
 
