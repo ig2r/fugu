@@ -62,7 +62,7 @@ public sealed class KeyValueStore : IAsyncDisposable
         };
 
         var allocateWriteBatchChannel = Channel.CreateBounded<AllocateWriteBatchMessage>(defaultBounded);
-        var writeWriteBatchChannel = Channel.CreateBounded<DummyMessage>(defaultBounded);
+        var writeWriteBatchChannel = Channel.CreateBounded<WriteWriteBatchMessage>(defaultBounded);
 
         // TODO: Both writer and compaction actors currently write to this channel.
         // This requires us to be extra careful during shutdown, as writer actor may have
@@ -86,7 +86,8 @@ public sealed class KeyValueStore : IAsyncDisposable
         var allocationActor = new AllocationActor(
             allocateWriteBatchChannel.Reader,
             segmentEvictedChannel.Reader,
-            writeWriteBatchChannel.Writer);
+            writeWriteBatchChannel.Writer,
+            tableSet);
 
         var writerActor = new WriterActor(
             writeWriteBatchChannel.Reader,

@@ -2,8 +2,7 @@
 
 namespace Fugu.Core.IO;
 
-public abstract class Table
+public abstract class Table : ReadOnlyTable
 {
-    public abstract ReadOnlySpan<byte> GetSpan(long start, int length);
-    public abstract IBufferWriter<byte> GetWriter();
+    public abstract IBufferWriter<byte> BufferWriter { get; }
 }

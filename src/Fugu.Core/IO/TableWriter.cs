@@ -13,6 +13,8 @@ public class TableWriter
         _bufferWriter = bufferWriter;
     }
 
+    public long Position { get; private set; } = 0;
+
     public void Write<T>(in T value) where T : struct
     {
         var size = Unsafe.SizeOf<T>();
@@ -20,10 +22,12 @@ public class TableWriter
 
         MemoryMarshal.Write(span, ref Unsafe.AsRef(in value));
         _bufferWriter.Advance(size);
+        Position += size;
     }
 
     public void WriteBytes(ReadOnlySpan<byte> value)
     {
         _bufferWriter.Write(value);
+        Position += value.Length;
     }
 }

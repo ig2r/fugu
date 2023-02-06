@@ -16,8 +16,5 @@ public class InMemoryTable : Table
         return _arrayBufferWriter.WrittenSpan.Slice((int)start, length);
     }
 
-    public override IBufferWriter<byte> GetWriter()
-    {
-        return _arrayBufferWriter;
-    }
+    public override IBufferWriter<byte> BufferWriter => _arrayBufferWriter;
 }
