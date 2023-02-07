@@ -5,14 +5,14 @@ namespace Fugu.Core.Actors;
 
 public class IndexActor : Actor
 {
-    private readonly ChannelReader<DummyMessage> _updateIndexChannelReader;
-    private readonly ChannelWriter<DummyMessage> _indexUpdatedChannelWriter;
-    private readonly ChannelWriter<DummyMessage> _updateSegmentStatsChannelWriter;
+    private readonly ChannelReader<UpdateIndexMessage> _updateIndexChannelReader;
+    private readonly ChannelWriter<IndexUpdatedMessage> _indexUpdatedChannelWriter;
+    private readonly ChannelWriter<UpdateSegmentStatsMessage> _updateSegmentStatsChannelWriter;
 
     public IndexActor(
-        ChannelReader<DummyMessage> updateIndexChannelReader,
-        ChannelWriter<DummyMessage> indexUpdatedChannelWriter,
-        ChannelWriter<DummyMessage> updateSegmentStatsChannelWriter)
+        ChannelReader<UpdateIndexMessage> updateIndexChannelReader,
+        ChannelWriter<IndexUpdatedMessage> indexUpdatedChannelWriter,
+        ChannelWriter<UpdateSegmentStatsMessage> updateSegmentStatsChannelWriter)
     {
         _updateIndexChannelReader = updateIndexChannelReader;
         _indexUpdatedChannelWriter = indexUpdatedChannelWriter;
@@ -30,7 +30,20 @@ public class IndexActor : Actor
         {
             if (_updateIndexChannelReader.TryRead(out var message))
             {
+                // TODO: Update index
 
+                // Tell downstream actors about this
+                await _indexUpdatedChannelWriter.WriteAsync(
+                    new IndexUpdatedMessage
+                    {
+                        Clock = message.Clock,
+                    });
+
+                await _updateSegmentStatsChannelWriter.WriteAsync(
+                    new UpdateSegmentStatsMessage
+                    {
+                        Clock = message.Clock,
+                    });
             }
         }
 

@@ -6,7 +6,7 @@ namespace Fugu.Core.Actors;
 
 public class SnapshotsActor : Actor
 {
-    private readonly ChannelReader<DummyMessage> _indexUpdatedChannelReader;
+    private readonly ChannelReader<IndexUpdatedMessage> _indexUpdatedChannelReader;
     private readonly ChannelReader<AwaitClockMessage> _awaitClockChannelReader;
     private readonly ChannelReader<DummyMessage> _getSnapshotChannelReader;
     private readonly ChannelReader<DummyMessage> _releaseSnapshotChannelReader;
@@ -16,7 +16,7 @@ public class SnapshotsActor : Actor
     private VectorClock _clock = new VectorClock();
 
     public SnapshotsActor(
-        ChannelReader<DummyMessage> indexUpdatedChannelReader,
+        ChannelReader<IndexUpdatedMessage> indexUpdatedChannelReader,
         ChannelReader<AwaitClockMessage> awaitClockChannelReader,
         ChannelReader<DummyMessage> getSnapshotChannelReader,
         ChannelReader<DummyMessage> releaseSnapshotChannelReader,

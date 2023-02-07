@@ -8,14 +8,14 @@ namespace Fugu.Core.Actors;
 public class WriterActor : Actor
 {
     private readonly ChannelReader<WriteWriteBatchMessage> _writeWriteBatchChannelReader;
-    private readonly ChannelWriter<DummyMessage> _updateIndexChannelWriter;
+    private readonly ChannelWriter<UpdateIndexMessage> _updateIndexChannelWriter;
 
     private Table? _outputTable;
     private TableWriter? _tableWriter;
 
     public WriterActor(
         ChannelReader<WriteWriteBatchMessage> writeWriteBatchChannelReader,
-        ChannelWriter<DummyMessage> updateIndexChannelWriter)
+        ChannelWriter<UpdateIndexMessage> updateIndexChannelWriter)
     {
         _writeWriteBatchChannelReader = writeWriteBatchChannelReader;
         _updateIndexChannelWriter = updateIndexChannelWriter;
@@ -111,6 +111,13 @@ public class WriterActor : Actor
                 };
 
                 _tableWriter.Write(in commitTrailer);
+
+                // Tell index actor about this write
+                await _updateIndexChannelWriter.WriteAsync(
+                    new UpdateIndexMessage
+                    {
+                        Clock = message.Clock,
+                    });
             }
         }
 
