@@ -12,7 +12,7 @@ public class IndexActor : Actor
     private readonly ChannelWriter<IndexUpdatedMessage> _indexUpdatedChannelWriter;
     private readonly ChannelWriter<UpdateSegmentStatsMessage> _updateSegmentStatsChannelWriter;
 
-    private Index _index = ImmutableDictionary.Create<Key, PayloadLocator>(keyComparer: new ByteKeyEqualityComparer());
+    private Index _index = ImmutableDictionary.Create<Key, IndexEntry>(keyComparer: new ByteKeyEqualityComparer());
 
     public IndexActor(
         ChannelReader<UpdateIndexMessage> updateIndexChannelReader,
@@ -40,17 +40,19 @@ public class IndexActor : Actor
                 // Update index
                 foreach (var (key, payloadLocator) in message.Payloads)
                 {
-                    if (builder.TryGetValue(key, out var previousPayload))
+                    var indexEntry = new IndexEntry(message.Segment, payloadLocator);
+
+                    if (builder.TryGetValue(key, out var previousIndexEntry))
                     {
                         // TODO: Handle previous value being displaced
                     }
 
-                    builder[key] = payloadLocator;
+                    builder[key] = indexEntry;
                 }
 
                 foreach (var key in message.Removals)
                 {
-                    if (builder.Remove(key, out var previousPayload))
+                    if (builder.Remove(key, out var previousIndexEntry))
                     {
                         // TODO: Handle a value having been removed
                     }

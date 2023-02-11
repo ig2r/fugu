@@ -1,5 +1,6 @@
 ﻿using Fugu.Core.Actors.Messages;
 using Fugu.Core.Common;
+using System.Collections.Immutable;
 using System.Threading.Channels;
 
 namespace Fugu.Core.Actors;
@@ -14,6 +15,7 @@ public class SnapshotsActor : Actor
 
     private readonly SemaphoreSlim _semaphore = new SemaphoreSlim(1);
     private VectorClock _clock = new VectorClock();
+    private Index _index = ImmutableDictionary<Key, IndexEntry>.Empty;
 
     public SnapshotsActor(
         ChannelReader<IndexUpdatedMessage> indexUpdatedChannelReader,
@@ -48,7 +50,7 @@ public class SnapshotsActor : Actor
             {
                 if (_indexUpdatedChannelReader.TryRead(out var message))
                 {
-
+                    _index = message.Index;
                 }
             }
             finally
