@@ -2,15 +2,7 @@
 
 namespace Fugu.Core.IO;
 
-public class Table
+public abstract class Table : ReadOnlyTable
 {
-    public ReadOnlySpan<byte> GetSpan(long start, int length)
-    {
-        throw new NotImplementedException();
-    }
-
-    public IBufferWriter<byte> GetWriter()
-    {
-        throw new NotImplementedException();
-    }
+    public abstract IBufferWriter<byte> BufferWriter { get; }
 }

@@ -62,21 +62,21 @@ public sealed class KeyValueStore : IAsyncDisposable
         };
 
         var allocateWriteBatchChannel = Channel.CreateBounded<AllocateWriteBatchMessage>(defaultBounded);
-        var writeWriteBatchChannel = Channel.CreateBounded<DummyMessage>(defaultBounded);
+        var writeWriteBatchChannel = Channel.CreateBounded<WriteWriteBatchMessage>(defaultBounded);
 
         // TODO: Both writer and compaction actors currently write to this channel.
         // This requires us to be extra careful during shutdown, as writer actor may have
         // already completed this channel when compaction actor tries to write to it.
         // Consider running two separate channels instead?
-        var updateIndexChannel = Channel.CreateBounded<DummyMessage>(defaultBounded);
-        var indexUpdatedChannel = Channel.CreateBounded<DummyMessage>(dropOldest);
+        var updateIndexChannel = Channel.CreateBounded<UpdateIndexMessage>(defaultBounded);
+        var indexUpdatedChannel = Channel.CreateBounded<IndexUpdatedMessage>(dropOldest);
         var snapshotsUpdatedChannel = Channel.CreateBounded<DummyMessage>(dropOldest);
 
         var awaitClockChannel = Channel.CreateBounded<AwaitClockMessage>(defaultBounded);
         var getSnapshotChannel = Channel.CreateBounded<DummyMessage>(defaultBounded);
         var releaseSnapshotChannel = Channel.CreateBounded<DummyMessage>(defaultBounded);
 
-        var updateSegmentStatsChannel = Channel.CreateBounded<DummyMessage>(defaultBounded);
+        var updateSegmentStatsChannel = Channel.CreateBounded<UpdateSegmentStatsMessage>(defaultBounded);
         var segmentStatsUpdatedChannel = Channel.CreateBounded<DummyMessage>(dropOldest);
 
         var segmentEmptiedChannel = Channel.CreateUnbounded<DummyMessage>();
@@ -86,7 +86,8 @@ public sealed class KeyValueStore : IAsyncDisposable
         var allocationActor = new AllocationActor(
             allocateWriteBatchChannel.Reader,
             segmentEvictedChannel.Reader,
-            writeWriteBatchChannel.Writer);
+            writeWriteBatchChannel.Writer,
+            tableSet);
 
         var writerActor = new WriterActor(
             writeWriteBatchChannel.Reader,

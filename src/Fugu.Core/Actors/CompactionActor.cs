@@ -8,7 +8,7 @@ public class CompactionActor : Actor
     private readonly ChannelReader<DummyMessage> _segmentStatsUpdatedChannelReader;
     private readonly ChannelReader<DummyMessage> _segmentEmptiedChannelReader;
     private readonly ChannelReader<DummyMessage> _snapshotsUpdatedChannelReader;
-    private readonly ChannelWriter<DummyMessage> _updateIndexChannelWriter;
+    private readonly ChannelWriter<UpdateIndexMessage> _updateIndexChannelWriter;
     private readonly ChannelWriter<DummyMessage> _segmentEvictedChannelWriter;
 
     private readonly SemaphoreSlim _semaphore = new SemaphoreSlim(1);
@@ -17,7 +17,7 @@ public class CompactionActor : Actor
         ChannelReader<DummyMessage> segmentStatsUpdatedChannelReader,
         ChannelReader<DummyMessage> segmentEmptiedChannelReader,
         ChannelReader<DummyMessage> snapshotsUpdatedChannelReader,
-        ChannelWriter<DummyMessage> updateIndexChannelWriter,
+        ChannelWriter<UpdateIndexMessage> updateIndexChannelWriter,
         ChannelWriter<DummyMessage> segmentEvictedChannelWriter)
     {
         _segmentStatsUpdatedChannelReader = segmentStatsUpdatedChannelReader;

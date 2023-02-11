@@ -3,7 +3,9 @@
 namespace Fugu.Core.IO.Format;
 
 [StructLayout(LayoutKind.Sequential, Pack = 1)]
-public readonly struct SegmentTrailer
+public readonly struct CommitTombstone
 {
-    public RecordDiscriminator Discriminator { get; init; }
+    public short KeySize { get; init; }
+
+    // Key follows immediately after
 }
