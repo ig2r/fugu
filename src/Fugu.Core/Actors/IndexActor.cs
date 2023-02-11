@@ -1,4 +1,7 @@
 ﻿using Fugu.Core.Actors.Messages;
+using Fugu.Core.Common;
+using Fugu.Core.IO;
+using System.Collections.Immutable;
 using System.Threading.Channels;
 
 namespace Fugu.Core.Actors;
@@ -8,6 +11,8 @@ public class IndexActor : Actor
     private readonly ChannelReader<UpdateIndexMessage> _updateIndexChannelReader;
     private readonly ChannelWriter<IndexUpdatedMessage> _indexUpdatedChannelWriter;
     private readonly ChannelWriter<UpdateSegmentStatsMessage> _updateSegmentStatsChannelWriter;
+
+    private Index _index = ImmutableDictionary.Create<Key, PayloadLocator>(keyComparer: new ByteKeyEqualityComparer());
 
     public IndexActor(
         ChannelReader<UpdateIndexMessage> updateIndexChannelReader,
@@ -30,13 +35,39 @@ public class IndexActor : Actor
         {
             if (_updateIndexChannelReader.TryRead(out var message))
             {
-                // TODO: Update index
+                var builder = _index.ToBuilder();
+
+                // Update index
+                foreach (var (key, payloadLocator) in message.Payloads)
+                {
+                    if (builder.TryGetValue(key, out var previousPayload))
+                    {
+                        // TODO: Handle previous value being displaced
+                    }
+
+                    builder[key] = payloadLocator;
+                }
+
+                foreach (var key in message.Removals)
+                {
+                    if (builder.Remove(key, out var previousPayload))
+                    {
+                        // TODO: Handle a value having been removed
+                    }
+                    else
+                    {
+                        // Removal was a dud
+                    }
+                }
+
+                _index = builder.ToImmutable();
 
                 // Tell downstream actors about this
                 await _indexUpdatedChannelWriter.WriteAsync(
                     new IndexUpdatedMessage
                     {
                         Clock = message.Clock,
+                        Index = _index,
                     });
 
                 await _updateSegmentStatsChannelWriter.WriteAsync(

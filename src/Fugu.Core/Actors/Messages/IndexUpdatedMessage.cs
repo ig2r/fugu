@@ -3,4 +3,5 @@
 namespace Fugu.Core.Actors.Messages;
 
 public readonly record struct IndexUpdatedMessage(
-    VectorClock Clock);
+    VectorClock Clock,
+    Index Index);
