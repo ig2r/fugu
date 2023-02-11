@@ -1,4 +1,5 @@
 ﻿using Fugu.Core.Actors.Messages;
+using Fugu.Core.Common;
 using Fugu.Core.IO;
 using Fugu.Core.IO.Format;
 using System.Threading.Channels;
@@ -12,6 +13,7 @@ public class WriterActor : Actor
 
     private Table? _outputTable;
     private TableWriter? _tableWriter;
+    private Segment? _outputSegment;
 
     public WriterActor(
         ChannelReader<WriteWriteBatchMessage> writeWriteBatchChannelReader,
@@ -49,13 +51,14 @@ public class WriterActor : Actor
                     // Initialize new output table
                     _outputTable = message.OutputTable;
                     _tableWriter = new TableWriter(_outputTable.BufferWriter);
+                    _outputSegment = new Segment(1, 1, _outputTable);
 
                     // Write segment header
                     var segmentHeader = new SegmentHeader
                     {
                         FormatVersion = 1,
-                        MinGeneration = 1,
-                        MaxGeneration = 1,
+                        MinGeneration = _outputSegment.MinGeneration,
+                        MaxGeneration = _outputSegment.MaxGeneration,
                     };
 
                     _tableWriter.Write(in segmentHeader);
@@ -70,10 +73,12 @@ public class WriterActor : Actor
                 _tableWriter!.Write(in commitHeader);
 
                 // Write puts
-                var pendingValues = new List<Value>(capacity: message.Batch.PendingPuts.Count);
+                var pendingValues = new List<KeyValuePair<Key, Value>>(capacity: message.Batch.PendingPuts.Count);
 
-                foreach (var (key, value) in message.Batch.PendingPuts)
+                foreach (var kvp in message.Batch.PendingPuts)
                 {
+                    var (key, value) = kvp;
+
                     var commitKeyValue = new CommitKeyValue
                     {
                         KeySize = (short)key.Length,
@@ -83,7 +88,7 @@ public class WriterActor : Actor
                     _tableWriter.Write(in commitKeyValue);
                     _tableWriter.WriteBytes(key.Span);
 
-                    pendingValues.Add(value);
+                    pendingValues.Add(kvp);
                 }
 
                 // Write tombstones
@@ -99,9 +104,17 @@ public class WriterActor : Actor
                 }
 
                 // Write payload values
-                foreach (var value in pendingValues)
+                var payloads = new Dictionary<Key, PayloadLocator>();
+                foreach (var (key, value) in pendingValues)
                 {
+                    var position = _tableWriter.Position;
                     _tableWriter.WriteBytes(value.Span);
+
+                    payloads[key] = new PayloadLocator
+                    {
+                        Start = position,
+                        Size = value.Span.Length,
+                    };
                 }
 
                 // Write commit trailer
@@ -117,6 +130,9 @@ public class WriterActor : Actor
                     new UpdateIndexMessage
                     {
                         Clock = message.Clock,
+                        Segment = _outputSegment!,
+                        Payloads = payloads,
+                        Removals = message.Batch.PendingRemovals,
                     });
             }
         }
