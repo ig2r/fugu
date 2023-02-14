@@ -11,6 +11,17 @@ public sealed class Snapshot : IDisposable
         _onDispose = onDispose;
     }
 
+    public ReadOnlySpan<byte> this[Key key]
+    {
+        get
+        {
+            var indexEntry = _index[key];
+            var payloadLocator = indexEntry.PayloadLocator;
+            var span = indexEntry.Segment.Table.GetSpan(payloadLocator.Start, payloadLocator.Size);
+            return span;
+        }
+    }
+
     public void Dispose()
     {
         _onDispose(this);
