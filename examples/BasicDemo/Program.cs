@@ -25,4 +25,11 @@ await using (var store = await KeyValueStore.CreateAsync(tableSet))
 
         await store.WriteAsync(batch);
     }
+
+    // Read results back
+    {
+        using var snapshot = await store.GetSnapshotAsync();
+        var hello = Encoding.UTF8.GetString(
+            snapshot[Encoding.UTF8.GetBytes("foo")]);
+    }
 }

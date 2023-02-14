@@ -9,7 +9,7 @@ public class SnapshotsActor : Actor
 {
     private readonly ChannelReader<IndexUpdatedMessage> _indexUpdatedChannelReader;
     private readonly ChannelReader<AwaitClockMessage> _awaitClockChannelReader;
-    private readonly ChannelReader<DummyMessage> _getSnapshotChannelReader;
+    private readonly ChannelReader<AcquireSnapshotMessage> _acquireSnapshotChannelReader;
     private readonly ChannelReader<DummyMessage> _releaseSnapshotChannelReader;
     private readonly ChannelWriter<DummyMessage> _snapshotsUpdatedChannelWriter;
 
@@ -20,13 +20,13 @@ public class SnapshotsActor : Actor
     public SnapshotsActor(
         ChannelReader<IndexUpdatedMessage> indexUpdatedChannelReader,
         ChannelReader<AwaitClockMessage> awaitClockChannelReader,
-        ChannelReader<DummyMessage> getSnapshotChannelReader,
+        ChannelReader<AcquireSnapshotMessage> acquireSnapshotChannelReader,
         ChannelReader<DummyMessage> releaseSnapshotChannelReader,
         ChannelWriter<DummyMessage> snapshotsUpdatedChannelWriter)
     {
         _indexUpdatedChannelReader = indexUpdatedChannelReader;
         _awaitClockChannelReader = awaitClockChannelReader;
-        _getSnapshotChannelReader = getSnapshotChannelReader;
+        _acquireSnapshotChannelReader = acquireSnapshotChannelReader;
         _releaseSnapshotChannelReader = releaseSnapshotChannelReader;
         _snapshotsUpdatedChannelWriter = snapshotsUpdatedChannelWriter;
     }
@@ -36,7 +36,7 @@ public class SnapshotsActor : Actor
         return Task.WhenAll(
             HandleIndexUpdatedMessagesAsync(),
             HandleAwaitClockMessagesAsync(),
-            HandleGetSnapshotMessagesAsync(),
+            HandleAcquireSnapshotMessagesAsync(),
             HandleReleaseSnapshotMessagesAsync());
     }
 
@@ -85,17 +85,18 @@ public class SnapshotsActor : Actor
         }
     }
 
-    private async Task HandleGetSnapshotMessagesAsync()
+    private async Task HandleAcquireSnapshotMessagesAsync()
     {
-        while (await _getSnapshotChannelReader.WaitToReadAsync())
+        while (await _acquireSnapshotChannelReader.WaitToReadAsync())
         {
             await _semaphore.WaitAsync();
 
             try
             {
-                if (_getSnapshotChannelReader.TryRead(out var message))
+                if (_acquireSnapshotChannelReader.TryRead(out var message))
                 {
-
+                    var snapshot = new Snapshot(_index, OnSnapshotDisposed);
+                    await message.ReplyChannelWriter.WriteAsync(snapshot);
                 }
             }
             finally
@@ -123,5 +124,10 @@ public class SnapshotsActor : Actor
                 _semaphore.Release();
             }
         }
+    }
+
+    private void OnSnapshotDisposed(Snapshot snapshot)
+    {
+
     }
 }

@@ -14,7 +14,7 @@ public sealed class KeyValueStore : IAsyncDisposable
     private readonly SegmentStatsActor _segmentStatsActor;
     private readonly CompactionActor _compactionActor;
     private readonly ChannelWriter<AllocateWriteBatchMessage> _allocateWriteBatchChannelWriter;
-    private readonly ChannelWriter<DummyMessage> _getSnapshotChannelWriter;
+    private readonly ChannelWriter<AcquireSnapshotMessage> _acquireSnapshotChannelWriter;
     private readonly ChannelWriter<DummyMessage> _releaseSnapshotChannelWriter;
     private readonly ChannelWriter<AwaitClockMessage> _awaitClockChannelWriter;
     private readonly Task _allActorsCompletion;
@@ -27,7 +27,7 @@ public sealed class KeyValueStore : IAsyncDisposable
         SegmentStatsActor segmentStatsActor,
         CompactionActor compactionActor,
         ChannelWriter<AllocateWriteBatchMessage> allocateWriteBatchChannelWriter,
-        ChannelWriter<DummyMessage> getSnapshotChannelWriter,
+        ChannelWriter<AcquireSnapshotMessage> acquireSnapshotChannelWriter,
         ChannelWriter<DummyMessage> releaseSnapshotChannelWriter,
         ChannelWriter<AwaitClockMessage> awaitClockChannelWriter,
         Task allActorsCompletion)
@@ -39,7 +39,7 @@ public sealed class KeyValueStore : IAsyncDisposable
         _segmentStatsActor = segmentStatsActor;
         _compactionActor = compactionActor;
         _allocateWriteBatchChannelWriter = allocateWriteBatchChannelWriter;
-        _getSnapshotChannelWriter = getSnapshotChannelWriter;
+        _acquireSnapshotChannelWriter = acquireSnapshotChannelWriter;
         _releaseSnapshotChannelWriter = releaseSnapshotChannelWriter;
         _awaitClockChannelWriter = awaitClockChannelWriter;
         _allActorsCompletion = allActorsCompletion;
@@ -73,7 +73,7 @@ public sealed class KeyValueStore : IAsyncDisposable
         var snapshotsUpdatedChannel = Channel.CreateBounded<DummyMessage>(dropOldest);
 
         var awaitClockChannel = Channel.CreateBounded<AwaitClockMessage>(defaultBounded);
-        var getSnapshotChannel = Channel.CreateBounded<DummyMessage>(defaultBounded);
+        var acquireSnapshotChannel = Channel.CreateBounded<AcquireSnapshotMessage>(defaultBounded);
         var releaseSnapshotChannel = Channel.CreateBounded<DummyMessage>(defaultBounded);
 
         var updateSegmentStatsChannel = Channel.CreateBounded<UpdateSegmentStatsMessage>(defaultBounded);
@@ -101,7 +101,7 @@ public sealed class KeyValueStore : IAsyncDisposable
         var snapshotsActor = new SnapshotsActor(
             indexUpdatedChannel.Reader,
             awaitClockChannel.Reader,
-            getSnapshotChannel.Reader,
+            acquireSnapshotChannel.Reader,
             releaseSnapshotChannel.Reader,
             snapshotsUpdatedChannel.Writer);
 
@@ -139,7 +139,7 @@ public sealed class KeyValueStore : IAsyncDisposable
             segmentStatsActor,
             compactionActor,
             allocateWriteBatchChannel.Writer,
-            getSnapshotChannel.Writer,
+            acquireSnapshotChannel.Writer,
             releaseSnapshotChannel.Writer,
             awaitClockChannel.Writer,
             allActorsCompletion);
@@ -153,7 +153,7 @@ public sealed class KeyValueStore : IAsyncDisposable
         // actors will propagate completion among themselves, shutting down all actors
         // in the mesh.
         _allocateWriteBatchChannelWriter.Complete();
-        _getSnapshotChannelWriter.Complete();
+        _acquireSnapshotChannelWriter.Complete();
         _releaseSnapshotChannelWriter.Complete();
         _awaitClockChannelWriter.Complete();
 
@@ -161,9 +161,19 @@ public sealed class KeyValueStore : IAsyncDisposable
         return new ValueTask(_allActorsCompletion);
     }
 
-    public ValueTask<Snapshot> GetSnapshotAsync()
+    public async ValueTask<Snapshot> GetSnapshotAsync()
     {
-        throw new NotImplementedException();
+        var replyChannel = Channel.CreateBounded<Snapshot>(capacity: 1);
+
+        var message = new AcquireSnapshotMessage
+        {
+            ReplyChannelWriter = replyChannel.Writer,
+        };
+
+        await _acquireSnapshotChannelWriter.WriteAsync(message);
+        var snapshot = await replyChannel.Reader.ReadAsync();
+
+        return snapshot;
     }
 
     public async ValueTask WriteAsync(WriteBatch batch)
