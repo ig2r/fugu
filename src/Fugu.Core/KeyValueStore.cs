@@ -14,7 +14,7 @@ public sealed class KeyValueStore : IAsyncDisposable
     private readonly SegmentStatsActor _segmentStatsActor;
     private readonly CompactionActor _compactionActor;
     private readonly ChannelWriter<AllocateWriteBatchMessage> _allocateWriteBatchChannelWriter;
-    private readonly ChannelWriter<DummyMessage> _acquireSnapshotChannelWriter;
+    private readonly ChannelWriter<AcquireSnapshotMessage> _acquireSnapshotChannelWriter;
     private readonly ChannelWriter<DummyMessage> _releaseSnapshotChannelWriter;
     private readonly ChannelWriter<AwaitClockMessage> _awaitClockChannelWriter;
     private readonly Task _allActorsCompletion;
@@ -27,7 +27,7 @@ public sealed class KeyValueStore : IAsyncDisposable
         SegmentStatsActor segmentStatsActor,
         CompactionActor compactionActor,
         ChannelWriter<AllocateWriteBatchMessage> allocateWriteBatchChannelWriter,
-        ChannelWriter<DummyMessage> acquireSnapshotChannelWriter,
+        ChannelWriter<AcquireSnapshotMessage> acquireSnapshotChannelWriter,
         ChannelWriter<DummyMessage> releaseSnapshotChannelWriter,
         ChannelWriter<AwaitClockMessage> awaitClockChannelWriter,
         Task allActorsCompletion)
@@ -73,7 +73,7 @@ public sealed class KeyValueStore : IAsyncDisposable
         var snapshotsUpdatedChannel = Channel.CreateBounded<DummyMessage>(dropOldest);
 
         var awaitClockChannel = Channel.CreateBounded<AwaitClockMessage>(defaultBounded);
-        var acquireSnapshotChannel = Channel.CreateBounded<DummyMessage>(defaultBounded);
+        var acquireSnapshotChannel = Channel.CreateBounded<AcquireSnapshotMessage>(defaultBounded);
         var releaseSnapshotChannel = Channel.CreateBounded<DummyMessage>(defaultBounded);
 
         var updateSegmentStatsChannel = Channel.CreateBounded<UpdateSegmentStatsMessage>(defaultBounded);

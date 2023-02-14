@@ -9,7 +9,7 @@ public class SnapshotsActor : Actor
 {
     private readonly ChannelReader<IndexUpdatedMessage> _indexUpdatedChannelReader;
     private readonly ChannelReader<AwaitClockMessage> _awaitClockChannelReader;
-    private readonly ChannelReader<DummyMessage> _acquireSnapshotChannelReader;
+    private readonly ChannelReader<AcquireSnapshotMessage> _acquireSnapshotChannelReader;
     private readonly ChannelReader<DummyMessage> _releaseSnapshotChannelReader;
     private readonly ChannelWriter<DummyMessage> _snapshotsUpdatedChannelWriter;
 
@@ -20,7 +20,7 @@ public class SnapshotsActor : Actor
     public SnapshotsActor(
         ChannelReader<IndexUpdatedMessage> indexUpdatedChannelReader,
         ChannelReader<AwaitClockMessage> awaitClockChannelReader,
-        ChannelReader<DummyMessage> acquireSnapshotChannelReader,
+        ChannelReader<AcquireSnapshotMessage> acquireSnapshotChannelReader,
         ChannelReader<DummyMessage> releaseSnapshotChannelReader,
         ChannelWriter<DummyMessage> snapshotsUpdatedChannelWriter)
     {
