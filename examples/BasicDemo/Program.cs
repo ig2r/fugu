@@ -28,6 +28,6 @@ await using (var store = await KeyValueStore.CreateAsync(tableSet))
 
     // Read results
     {
-        var snapshot = await store.GetSnapshotAsync();
+        using var snapshot = await store.GetSnapshotAsync();
     }
 }

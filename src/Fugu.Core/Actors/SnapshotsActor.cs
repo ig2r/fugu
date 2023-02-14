@@ -95,7 +95,8 @@ public class SnapshotsActor : Actor
             {
                 if (_acquireSnapshotChannelReader.TryRead(out var message))
                 {
-
+                    var snapshot = new Snapshot(_index, OnSnapshotDisposed);
+                    await message.ReplyChannelWriter.WriteAsync(snapshot);
                 }
             }
             finally
@@ -123,5 +124,10 @@ public class SnapshotsActor : Actor
                 _semaphore.Release();
             }
         }
+    }
+
+    private void OnSnapshotDisposed(Snapshot snapshot)
+    {
+
     }
 }
