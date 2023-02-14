@@ -25,7 +25,7 @@ Additionally, the prevalently multi-core architecture of modern CPUs opens up th
 
 > What is the change that we're proposing and/or doing?
 
-We decide to model concurrency in Fugu around an actor model in which actors communicate by asynchronous message passing.
+We decide to model concurrency in Fugu around an actor model, in which actors communicate through asynchronous message passing.
 
 Each actor shall be responsible for a clearly-defined chunk of functionality (e.g., index management, snapshot tracking, etc.) and manage its own state internally. As the "inner loop" of actors will be implemented on a single logical thread, this will remove the need for synchronization when accessing this internal state.
 
