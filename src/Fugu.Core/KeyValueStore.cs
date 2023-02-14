@@ -161,10 +161,19 @@ public sealed class KeyValueStore : IAsyncDisposable
         return new ValueTask(_allActorsCompletion);
     }
 
-    public ValueTask<Snapshot> GetSnapshotAsync()
+    public async ValueTask<Snapshot> GetSnapshotAsync()
     {
-        var replyChannel = Channel.CreateBounded<VectorClock>(capacity: 1);
-        throw new NotImplementedException();
+        var replyChannel = Channel.CreateBounded<Snapshot>(capacity: 1);
+
+        var message = new AcquireSnapshotMessage
+        {
+            ReplyChannelWriter = replyChannel.Writer,
+        };
+
+        await _acquireSnapshotChannelWriter.WriteAsync(message);
+        var snapshot = await replyChannel.Reader.ReadAsync();
+
+        return snapshot;
     }
 
     public async ValueTask WriteAsync(WriteBatch batch)
