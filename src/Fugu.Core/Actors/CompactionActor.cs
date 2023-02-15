@@ -5,7 +5,7 @@ namespace Fugu.Core.Actors;
 
 public class CompactionActor : Actor
 {
-    private readonly ChannelReader<DummyMessage> _segmentStatsUpdatedChannelReader;
+    private readonly ChannelReader<SegmentStatsUpdatedMessage> _segmentStatsUpdatedChannelReader;
     private readonly ChannelReader<DummyMessage> _segmentEmptiedChannelReader;
     private readonly ChannelReader<DummyMessage> _snapshotsUpdatedChannelReader;
     private readonly ChannelWriter<UpdateIndexMessage> _updateIndexChannelWriter;
@@ -14,7 +14,7 @@ public class CompactionActor : Actor
     private readonly SemaphoreSlim _semaphore = new SemaphoreSlim(1);
 
     public CompactionActor(
-        ChannelReader<DummyMessage> segmentStatsUpdatedChannelReader,
+        ChannelReader<SegmentStatsUpdatedMessage> segmentStatsUpdatedChannelReader,
         ChannelReader<DummyMessage> segmentEmptiedChannelReader,
         ChannelReader<DummyMessage> snapshotsUpdatedChannelReader,
         ChannelWriter<UpdateIndexMessage> updateIndexChannelWriter,

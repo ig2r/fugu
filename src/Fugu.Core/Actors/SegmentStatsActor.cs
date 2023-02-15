@@ -8,7 +8,7 @@ namespace Fugu.Core.Actors;
 public class SegmentStatsActor : Actor
 {
     private readonly ChannelReader<UpdateSegmentStatsMessage> _updateSegmentStatsChannelReader;
-    private readonly ChannelWriter<DummyMessage> _segmentStatsUpdatedChannelWriter;
+    private readonly ChannelWriter<SegmentStatsUpdatedMessage> _segmentStatsUpdatedChannelWriter;
     private readonly ChannelWriter<DummyMessage> _segmentEmptiedChannelWriter;
 
     private ImmutableDictionary<Segment, SegmentStats> _segmentStats =
@@ -16,7 +16,7 @@ public class SegmentStatsActor : Actor
 
     public SegmentStatsActor(
         ChannelReader<UpdateSegmentStatsMessage> updateSegmentStatsChannelReader,
-        ChannelWriter<DummyMessage> segmentStatsUpdatedChannelWriter,
+        ChannelWriter<SegmentStatsUpdatedMessage> segmentStatsUpdatedChannelWriter,
         ChannelWriter<DummyMessage> segmentEmptiedChannelWriter)
     {
         _updateSegmentStatsChannelReader = updateSegmentStatsChannelReader;
@@ -49,6 +49,13 @@ public class SegmentStatsActor : Actor
                 }
 
                 _segmentStats = builder.ToImmutable();
+
+                await _segmentStatsUpdatedChannelWriter.WriteAsync(
+                    new SegmentStatsUpdatedMessage
+                    {
+                        Clock = message.Clock,
+                        SegmentStats = _segmentStats,
+                    });
             }
         }
 
