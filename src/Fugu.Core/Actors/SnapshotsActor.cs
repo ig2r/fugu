@@ -50,6 +50,7 @@ public class SnapshotsActor : Actor
             {
                 if (_indexUpdatedChannelReader.TryRead(out var message))
                 {
+                    _clock = VectorClock.Max(_clock, message.Clock);
                     _index = message.Index;
                 }
             }
