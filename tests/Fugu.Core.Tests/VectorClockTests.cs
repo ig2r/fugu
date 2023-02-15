@@ -21,4 +21,16 @@ public class VectorClockTests
 
         Assert.False(lhs >= rhs);
     }
+
+    [Fact]
+    public void Max_ReturnsComponentWiseMaximum()
+    {
+        var x = new VectorClock(1, 4);
+        var y = new VectorClock(2, 3);
+
+        var max = VectorClock.Max(x, y);
+
+        Assert.Equal(2, max.Write);
+        Assert.Equal(4, max.Compaction);
+    }
 }
