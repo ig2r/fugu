@@ -61,6 +61,13 @@ public sealed class KeyValueStore : IAsyncDisposable
             SingleReader = true,
         };
 
+        var dropOldestAsync = new BoundedChannelOptions(capacity: 1)
+        {
+            FullMode = BoundedChannelFullMode.DropOldest,
+            AllowSynchronousContinuations = false,
+            SingleReader = true,
+        };
+
         var allocateWriteBatchChannel = Channel.CreateBounded<AllocateWriteBatchMessage>(defaultBounded);
         var writeWriteBatchChannel = Channel.CreateBounded<WriteWriteBatchMessage>(defaultBounded);
 
@@ -70,14 +77,14 @@ public sealed class KeyValueStore : IAsyncDisposable
         // Consider running two separate channels instead?
         var updateIndexChannel = Channel.CreateBounded<UpdateIndexMessage>(defaultBounded);
         var indexUpdatedChannel = Channel.CreateBounded<IndexUpdatedMessage>(dropOldest);
-        var snapshotsUpdatedChannel = Channel.CreateBounded<DummyMessage>(dropOldest);
+        var snapshotsUpdatedChannel = Channel.CreateBounded<DummyMessage>(dropOldestAsync);
 
         var awaitClockChannel = Channel.CreateBounded<AwaitClockMessage>(defaultBounded);
         var acquireSnapshotChannel = Channel.CreateBounded<AcquireSnapshotMessage>(defaultBounded);
         var releaseSnapshotChannel = Channel.CreateBounded<DummyMessage>(defaultBounded);
 
         var updateSegmentStatsChannel = Channel.CreateBounded<UpdateSegmentStatsMessage>(defaultBounded);
-        var segmentStatsUpdatedChannel = Channel.CreateBounded<DummyMessage>(dropOldest);
+        var segmentStatsUpdatedChannel = Channel.CreateBounded<SegmentStatsUpdatedMessage>(dropOldestAsync);
 
         var segmentEmptiedChannel = Channel.CreateUnbounded<DummyMessage>();
         var segmentEvictedChannel = Channel.CreateUnbounded<DummyMessage>();
