@@ -1,6 +1,5 @@
 ﻿using Fugu.Core.Actors.Messages;
 using Fugu.Core.Common;
-using Fugu.Core.IO;
 using System.Collections.Immutable;
 using System.Threading.Channels;
 
@@ -35,30 +34,55 @@ public class IndexActor : Actor
         {
             if (_updateIndexChannelReader.TryRead(out var message))
             {
+                // We'll use this to track stats changes
+                var statsChanges = new Dictionary<Segment, SegmentStatsChange>();
+
                 var builder = _index.ToBuilder();
 
-                // Update index
+                // Update index: handle writes
                 foreach (var (key, payloadLocator) in message.Payloads)
                 {
                     var indexEntry = new IndexEntry(message.Segment, payloadLocator);
 
                     if (builder.TryGetValue(key, out var previousIndexEntry))
                     {
-                        // TODO: Handle previous value being displaced
+                        // Displacing an existing key in the index
+                        var prevStats = statsChanges.GetValueOrDefault(previousIndexEntry.Segment);
+                        prevStats = prevStats with { BytesDisplaced = prevStats.BytesDisplaced + key.Length + previousIndexEntry.PayloadLocator.Size };
+                        statsChanges[previousIndexEntry.Segment] = prevStats;
                     }
+
+                    var stats = statsChanges.GetValueOrDefault(message.Segment);
+                    stats = stats with { LiveBytesWritten = stats.LiveBytesWritten + key.Length + payloadLocator.Size };
+                    statsChanges[message.Segment] = stats;
 
                     builder[key] = indexEntry;
                 }
 
+                // Update index: handle removals
                 foreach (var key in message.Removals)
                 {
                     if (builder.Remove(key, out var previousIndexEntry))
                     {
-                        // TODO: Handle a value having been removed
+                        // Displacing an existing key in the index
+                        var prevStats = statsChanges.GetValueOrDefault(previousIndexEntry.Segment);
+                        prevStats = prevStats with { BytesDisplaced = prevStats.BytesDisplaced + key.Length + previousIndexEntry.PayloadLocator.Size };
+                        statsChanges[previousIndexEntry.Segment] = prevStats;
+
+                        var stats = statsChanges.GetValueOrDefault(message.Segment);
+                        stats = stats with { LiveBytesWritten = stats.LiveBytesWritten + key.Length };
+                        statsChanges[message.Segment] = stats;
                     }
                     else
                     {
-                        // Removal was a dud
+                        // Removal attempt was a dud, there was nothing in the index
+                        var stats = statsChanges.GetValueOrDefault(message.Segment);
+                        stats = stats with
+                        {
+                            LiveBytesWritten = stats.LiveBytesWritten + key.Length,
+                            BytesDisplaced = stats.BytesDisplaced + key.Length,
+                        };
+                        statsChanges[message.Segment] = stats;
                     }
                 }
 
@@ -76,6 +100,7 @@ public class IndexActor : Actor
                     new UpdateSegmentStatsMessage
                     {
                         Clock = message.Clock,
+                        StatsChanges = statsChanges,
                     });
             }
         }
