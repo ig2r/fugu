@@ -7,6 +7,9 @@ namespace Fugu.Core.Actors;
 
 public class AllocationActor : Actor
 {
+    // Minimum size of a table, in bytes
+    private const long MinTableSizeBytes = 1024;
+
     private readonly ChannelReader<AllocateWriteBatchMessage> _allocateWriteBatchChannelReader;
     private readonly ChannelReader<DummyMessage> _segmentEvictedChannelReader;
     private readonly ChannelWriter<WriteWriteBatchMessage> _writeWriteBatchChannelWriter;
@@ -15,6 +18,7 @@ public class AllocationActor : Actor
     private readonly SemaphoreSlim _semaphore = new SemaphoreSlim(1);
     private VectorClock _clock = new VectorClock();
     private Table? _outputTable = null;
+    private long _remainingCapacity = 0;
 
     public AllocationActor(
         ChannelReader<AllocateWriteBatchMessage> allocateWriteBatchChannelReader,
@@ -51,11 +55,28 @@ public class AllocationActor : Actor
                     _clock = _clock with { Write = _clock.Write + 1 };
                     await message.ReplyChannelWriter.WriteAsync(_clock);
 
+                    // Figure out how much space we'll need to write the current batch, and end the current
+                    // output table if it won't fit
+                    var spaceRequired = Measurements.Measure(message.Batch);
+
+                    if (spaceRequired > _remainingCapacity)
+                    {
+                        _outputTable = null;
+                        _remainingCapacity = 0;
+                    }
+
                     // Make sure there's an output table with sufficient remaining space for this write
                     if (_outputTable is null)
                     {
-                        _outputTable = await _tableSet.CreateTableAsync(1024);
+                        // Size new output table so that it's guaranteed to fit at least
+                        // the incoming write + segment book-keeping, instead of hardcoded size
+                        var capacity = Math.Max(MinTableSizeBytes, Measurements.SegmentOverheadSize + spaceRequired);
+
+                        _outputTable = await _tableSet.CreateTableAsync(capacity);
+                        _remainingCapacity = capacity - Measurements.SegmentOverheadSize;
                     }
+
+                    _remainingCapacity -= spaceRequired;
 
                     await _writeWriteBatchChannelWriter.WriteAsync(
                         new WriteWriteBatchMessage

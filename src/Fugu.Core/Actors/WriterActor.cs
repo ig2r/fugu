@@ -48,10 +48,13 @@ public class WriterActor : Actor
                         _tableWriter!.Write(in segmentTrailer);
                     }
 
-                    // Initialize new output table
+                    // Determine generation of the new output segment
+                    var outputGeneration = _outputSegment?.MaxGeneration + 1 ?? 1;
+
+                    // Initialize new output segment backed by the current output table
                     _outputTable = message.OutputTable;
                     _tableWriter = new TableWriter(_outputTable.BufferWriter);
-                    _outputSegment = new Segment(1, 1, _outputTable);
+                    _outputSegment = new Segment(outputGeneration, outputGeneration, _outputTable);
 
                     // Write segment header
                     var segmentHeader = new SegmentHeader
