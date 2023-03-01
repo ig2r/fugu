@@ -37,7 +37,7 @@ See: [Crotty, A., Leis, V. and Pavlo, A., 2022. Are you sure you want to use mma
 
 We choose **asynchronous file I/O** as Fugu's mechanism to interface with persistent storage. While conceptually alluring, we heed the warning of Crotty et al. regarding observed roadblocks in practice when implementing databases on top of memory-mapped files.
 
-Furthermore, asynchronous file I/O appears to be preferrable over synchronous I/O due to Fugu's inherently async makeup, in which asynchronous file I/O should let us avoid thread stalls.
+Furthermore, asynchronous file I/O appears to be preferable over synchronous I/O due to Fugu's inherently async makeup, in which asynchronous file I/O should let us avoid thread stalls.
 
 ## Consequences
 
