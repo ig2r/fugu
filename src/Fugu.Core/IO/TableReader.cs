@@ -14,21 +14,21 @@ public class TableReader
 
     public long Position { get; private set; } = 0;
 
-    public ref readonly T Read<T>() where T : struct
-    {
-        var size = Unsafe.SizeOf<T>();
-        var span = _table.GetSpan(Position, size);
-        ref readonly var value = ref MemoryMarshal.AsRef<T>(span);
+    //public ref readonly T Read<T>() where T : struct
+    //{
+    //    var size = Unsafe.SizeOf<T>();
+    //    var span = _table.GetSpan(Position, size);
+    //    ref readonly var value = ref MemoryMarshal.AsRef<T>(span);
 
-        Position += size;
-        return ref value;
-    }
+    //    Position += size;
+    //    return ref value;
+    //}
 
-    public ReadOnlySpan<byte> ReadBytes(int length)
-    {
-        var value = _table.GetSpan(Position, length);
+    //public ReadOnlySpan<byte> ReadBytes(int length)
+    //{
+    //    var value = _table.GetSpan(Position, length);
 
-        Position += length;
-        return value;
-    }
+    //    Position += length;
+    //    return value;
+    //}
 }

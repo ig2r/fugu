@@ -6,4 +6,4 @@ namespace Fugu.Core.Actors.Messages;
 public readonly record struct WriteWriteBatchMessage(
     WriteBatch Batch,
     VectorClock Clock,
-    Table OutputTable);
+    WritableTable OutputTable);

@@ -4,7 +4,7 @@ namespace Fugu.Core.Common;
 
 public class Segment
 {
-    public Segment(long minGeneration, long maxGeneration, ReadOnlyTable table)
+    public Segment(long minGeneration, long maxGeneration, Table table)
     {
         MinGeneration = minGeneration;
         MaxGeneration = maxGeneration;
@@ -13,5 +13,5 @@ public class Segment
 
     public long MinGeneration { get; }
     public long MaxGeneration { get; }
-    public ReadOnlyTable Table { get; }
+    public Table Table { get; }
 }
