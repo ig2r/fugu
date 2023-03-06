@@ -11,11 +11,23 @@ public sealed class Snapshot : IDisposable
         _onDispose = onDispose;
     }
 
-    public ValueTask ReadAsync(Memory<byte> buffer, Key key)
+    public bool TryGetLength(Key key, out int length)
+    {
+        if (!_index.TryGetValue(key, out var indexEntry))
+        {
+            length = 0;
+            return false;
+        }
+
+        length = indexEntry.PayloadLocator.Size;
+        return true;
+    }
+
+    public ValueTask ReadAsync(Key key, Memory<byte> buffer)
     {
         var indexEntry = _index[key];
         var payloadLocator = indexEntry.PayloadLocator;
-        return indexEntry.Segment.Table.ReadAsync(buffer.Slice(0, payloadLocator.Size), payloadLocator.Start);
+        return indexEntry.Segment.Table.ReadAsync(buffer[..payloadLocator.Size], payloadLocator.Start);
     }
 
     public void Dispose()

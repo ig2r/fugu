@@ -29,7 +29,13 @@ await using (var store = await KeyValueStore.CreateAsync(tableSet))
     // Read results back
     {
         using var snapshot = await store.GetSnapshotAsync();
-        var buffer = new byte[100];
-        await snapshot.ReadAsync(buffer, Encoding.UTF8.GetBytes("foo"));
+
+        var foo = Encoding.UTF8.GetBytes("foo");
+
+        if (snapshot.TryGetLength(foo, out var length))
+        {
+            var buffer = new byte[length];
+            await snapshot.ReadAsync(foo, buffer);
+        }
     }
 }
