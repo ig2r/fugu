@@ -1,6 +1,8 @@
-﻿namespace Fugu.Core.IO;
+﻿using System.IO.Pipelines;
+
+namespace Fugu.Core.IO;
 
 public abstract class WritableTable : Table
 {
-    public abstract Stream OutputStream { get; }
+    public abstract PipeWriter Writer { get; }
 }

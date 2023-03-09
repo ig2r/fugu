@@ -2,7 +2,6 @@
 using Fugu.Core.Common;
 using Fugu.Core.IO;
 using Fugu.Core.IO.Format;
-using System.IO.Pipelines;
 using System.Threading.Channels;
 
 namespace Fugu.Core.Actors;
@@ -13,7 +12,6 @@ public class WriterActor : Actor
     private readonly ChannelWriter<UpdateIndexMessage> _updateIndexChannelWriter;
 
     private WritableTable? _outputTable;
-    private PipeWriter? _outputPipeWriter;
     private TableWriter? _tableWriter;
     private Segment? _outputSegment;
 
@@ -55,8 +53,7 @@ public class WriterActor : Actor
 
                     // Initialize new output segment backed by the current output table
                     _outputTable = message.OutputTable;
-                    _outputPipeWriter = PipeWriter.Create(_outputTable.OutputStream, new StreamPipeWriterOptions(leaveOpen: true));
-                    _tableWriter = new TableWriter(_outputPipeWriter);
+                    _tableWriter = new TableWriter(_outputTable.Writer);
 
                     _outputSegment = new Segment(outputGeneration, outputGeneration, _outputTable);
 
@@ -133,7 +130,7 @@ public class WriterActor : Actor
                 _tableWriter.Write(in commitTrailer);
 
                 // Flush commit
-                var flushResult = await _outputPipeWriter!.FlushAsync();
+                var flushResult = await _outputTable.Writer.FlushAsync();
 
                 // Tell index actor about this write
                 await _updateIndexChannelWriter.WriteAsync(
