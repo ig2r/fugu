@@ -11,7 +11,7 @@ public class WriterActor : Actor
     private readonly ChannelReader<WriteWriteBatchMessage> _writeWriteBatchChannelReader;
     private readonly ChannelWriter<UpdateIndexMessage> _updateIndexChannelWriter;
 
-    private Table? _outputTable;
+    private WritableTable? _outputTable;
     private TableWriter? _tableWriter;
     private Segment? _outputSegment;
 
@@ -53,7 +53,8 @@ public class WriterActor : Actor
 
                     // Initialize new output segment backed by the current output table
                     _outputTable = message.OutputTable;
-                    _tableWriter = new TableWriter(_outputTable.BufferWriter);
+                    _tableWriter = new TableWriter(_outputTable.Writer);
+
                     _outputSegment = new Segment(outputGeneration, outputGeneration, _outputTable);
 
                     // Write segment header
@@ -127,6 +128,9 @@ public class WriterActor : Actor
                 };
 
                 _tableWriter.Write(in commitTrailer);
+
+                // Flush commit
+                var flushResult = await _outputTable.Writer.FlushAsync();
 
                 // Tell index actor about this write
                 await _updateIndexChannelWriter.WriteAsync(

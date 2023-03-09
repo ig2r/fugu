@@ -11,15 +11,23 @@ public sealed class Snapshot : IDisposable
         _onDispose = onDispose;
     }
 
-    public ReadOnlySpan<byte> this[Key key]
+    public bool TryGetLength(Key key, out int length)
     {
-        get
+        if (!_index.TryGetValue(key, out var indexEntry))
         {
-            var indexEntry = _index[key];
-            var payloadLocator = indexEntry.PayloadLocator;
-            var span = indexEntry.Segment.Table.GetSpan(payloadLocator.Start, payloadLocator.Size);
-            return span;
+            length = 0;
+            return false;
         }
+
+        length = indexEntry.PayloadLocator.Size;
+        return true;
+    }
+
+    public ValueTask ReadAsync(Key key, Memory<byte> buffer)
+    {
+        var indexEntry = _index[key];
+        var payloadLocator = indexEntry.PayloadLocator;
+        return indexEntry.Segment.Table.ReadAsync(buffer[..payloadLocator.Size], payloadLocator.Start);
     }
 
     public void Dispose()

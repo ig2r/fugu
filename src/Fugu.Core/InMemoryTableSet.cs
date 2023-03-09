@@ -4,9 +4,9 @@ namespace Fugu.Core;
 
 public class InMemoryTableSet : TableSet
 {
-    public override ValueTask<Table> CreateTableAsync(long capacity)
+    public override ValueTask<WritableTable> CreateTableAsync(long capacity)
     {
         var table = new InMemoryTable((int)capacity);
-        return ValueTask.FromResult<Table>(table);
+        return ValueTask.FromResult<WritableTable>(table);
     }
 }

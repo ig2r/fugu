@@ -1,20 +1,24 @@
-﻿using System.Buffers;
+﻿using System.IO.Pipelines;
 
 namespace Fugu.Core.IO;
 
-public class InMemoryTable : Table
+public class InMemoryTable : WritableTable
 {
-    private readonly ArrayBufferWriter<byte> _arrayBufferWriter;
+    private readonly MemoryStream _stream;
+    private readonly PipeWriter _writer;
 
     public InMemoryTable(int capacity)
     {
-        _arrayBufferWriter = new ArrayBufferWriter<byte>(capacity);
+        _stream = new MemoryStream(capacity);
+        _writer = PipeWriter.Create(_stream);
     }
 
-    public override ReadOnlySpan<byte> GetSpan(long start, int length)
+    public override PipeWriter Writer => _writer;
+
+    public override ValueTask ReadAsync(Memory<byte> buffer, long offset)
     {
-        return _arrayBufferWriter.WrittenSpan.Slice((int)start, length);
+        var contents = _stream.ToArray();
+        contents.AsMemory((int)offset, buffer.Length).CopyTo(buffer);
+        return ValueTask.CompletedTask;
     }
-
-    public override IBufferWriter<byte> BufferWriter => _arrayBufferWriter;
 }

@@ -4,5 +4,5 @@ namespace Fugu.Core;
 
 public abstract class TableSet
 {
-    public abstract ValueTask<Table> CreateTableAsync(long capacity);
+    public abstract ValueTask<WritableTable> CreateTableAsync(long capacity);
 }

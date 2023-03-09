@@ -17,7 +17,7 @@ public class AllocationActor : Actor
 
     private readonly SemaphoreSlim _semaphore = new SemaphoreSlim(1);
     private VectorClock _clock = new VectorClock();
-    private Table? _outputTable = null;
+    private WritableTable? _outputTable = null;
     private long _remainingCapacity = 0;
 
     public AllocationActor(

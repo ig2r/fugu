@@ -2,7 +2,7 @@
 
 namespace Fugu.Core.IO;
 
-public abstract class Table : ReadOnlyTable
+public abstract class Table
 {
-    public abstract IBufferWriter<byte> BufferWriter { get; }
+    public abstract ValueTask ReadAsync(Memory<byte> buffer, long offset);
 }
