@@ -5,21 +5,21 @@ namespace Fugu.Storage;
 public class InMemorySlab : IWritableStorageSlab
 {
     private readonly ArrayBufferWriter<byte> _arrayBufferWriter;
-    private readonly ReaderWriterLockSlim _bufferWriterLock;
+    private readonly ReaderWriterLockSlim _readerWriterLock;
 
     internal InMemorySlab()
     {
         _arrayBufferWriter = new ArrayBufferWriter<byte>();
-        _bufferWriterLock = new ReaderWriterLockSlim();
+        _readerWriterLock = new ReaderWriterLockSlim();
 
-        Output = new BufferWriterStream(_arrayBufferWriter, _bufferWriterLock);
+        Output = new BufferWriterStream(_arrayBufferWriter, _readerWriterLock);
     }
 
     public long Length
     {
         get
         {
-            _bufferWriterLock.EnterReadLock();
+            _readerWriterLock.EnterReadLock();
 
             try
             {
@@ -27,7 +27,7 @@ public class InMemorySlab : IWritableStorageSlab
             }
             finally
             {
-                _bufferWriterLock.ExitReadLock();
+                _readerWriterLock.ExitReadLock();
             }
         }
     }
@@ -36,18 +36,28 @@ public class InMemorySlab : IWritableStorageSlab
 
     public ValueTask<int> ReadAsync(Memory<byte> buffer, long offset, CancellationToken cancellationToken = default)
     {
-        throw new NotImplementedException();
+        _readerWriterLock.EnterReadLock();
+
+        try
+        {
+            _arrayBufferWriter.WrittenSpan.Slice((int)offset, buffer.Length).CopyTo(buffer.Span);
+            return ValueTask.FromResult(buffer.Length);
+        }
+        finally
+        {
+            _readerWriterLock.ExitReadLock();
+        }
     }
 
     private class BufferWriterStream : Stream
     {
         private readonly IBufferWriter<byte> _bufferWriter;
-        private readonly ReaderWriterLockSlim _bufferWriterLock;
+        private readonly ReaderWriterLockSlim _readerWriterLock;
 
-        public BufferWriterStream(IBufferWriter<byte> bufferWriter, ReaderWriterLockSlim bufferWriterLock)
+        public BufferWriterStream(IBufferWriter<byte> bufferWriter, ReaderWriterLockSlim readerWriterLock)
         {
             _bufferWriter = bufferWriter;
-            _bufferWriterLock = bufferWriterLock;
+            _readerWriterLock = readerWriterLock;
         }
 
         public override bool CanRead => false;
@@ -85,7 +95,7 @@ public class InMemorySlab : IWritableStorageSlab
 
         public override void Write(byte[] buffer, int offset, int count)
         {
-            _bufferWriterLock.EnterWriteLock();
+            _readerWriterLock.EnterWriteLock();
 
             try
             {
@@ -93,7 +103,7 @@ public class InMemorySlab : IWritableStorageSlab
             }
             finally
             {
-                _bufferWriterLock.ExitWriteLock();
+                _readerWriterLock.ExitWriteLock();
             }
         }
     }
