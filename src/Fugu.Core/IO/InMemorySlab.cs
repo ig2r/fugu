@@ -1,6 +1,6 @@
 ﻿using System.Buffers;
 
-namespace Fugu.Storage;
+namespace Fugu.IO;
 
 public class InMemorySlab : IWritableSlab, ISlab
 {

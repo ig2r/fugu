@@ -1,6 +1,6 @@
 ﻿using System.IO.Pipelines;
 
-namespace Fugu.Storage;
+namespace Fugu.IO;
 
 public class SegmentParser
 {

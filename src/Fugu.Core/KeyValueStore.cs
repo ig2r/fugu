@@ -1,4 +1,4 @@
-﻿using Fugu.Storage;
+﻿using Fugu.IO;
 
 namespace Fugu;
 
@@ -6,7 +6,7 @@ public class KeyValueStore
 {
     private KeyValueStore(IBackingStorage storage)
     {
-        
+
     }
 
     public static ValueTask<KeyValueStore> CreateAsync(IBackingStorage storage)

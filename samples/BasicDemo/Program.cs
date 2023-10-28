@@ -1,4 +1,4 @@
-﻿using Fugu.Storage;
+﻿using Fugu.IO;
 using System.Buffers;
 using System.IO.Pipelines;
 

@@ -1,7 +1,7 @@
 ﻿using System.Buffers;
 using System.Diagnostics.CodeAnalysis;
 
-namespace Fugu.Storage;
+namespace Fugu.IO;
 
 /// <summary>
 /// Read-path dual to <see cref="SegmentWriter"/>.

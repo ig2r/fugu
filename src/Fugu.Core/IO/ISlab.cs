@@ -1,4 +1,4 @@
-﻿namespace Fugu.Storage;
+﻿namespace Fugu.IO;
 
 /*
  * Names:

@@ -2,7 +2,7 @@
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
-namespace Fugu.Storage;
+namespace Fugu.IO;
 
 public ref struct SpanReader
 {
