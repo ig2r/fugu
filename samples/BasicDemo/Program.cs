@@ -3,9 +3,9 @@ using System.Buffers;
 using System.IO.Pipelines;
 
 // Create a pre-populated PipeReader for testing
-PipeReader CreateTestDataPipeReader()
+static async Task CreateTestDataAsync(PipeWriter pipeWriter)
 {
-    void BuildSegment(IBufferWriter<byte> bufferWriter)
+    static void BuildSegment(IBufferWriter<byte> bufferWriter)
     {
         var segmentWriter = new SegmentWriter(bufferWriter);
         segmentWriter.WriteSegmentHeader(1, 2);
@@ -17,31 +17,17 @@ PipeReader CreateTestDataPipeReader()
         bufferWriter.Write(new byte[20]);
     }
 
-    var bufferWriter = new ArrayBufferWriter<byte>();
-    BuildSegment(bufferWriter);
-
-    var pipe = new Pipe();
-
-    var task = Task.Run(async () =>
-    {
-        for (int i = 0; i < bufferWriter.WrittenCount; i += 10)
-        {
-            var slice = bufferWriter.WrittenMemory.Slice(i, Math.Min(i + 10, bufferWriter.WrittenCount) - i);
-            pipe.Writer.Write(slice.Span);
-            await pipe.Writer.FlushAsync();
-
-            await Task.Delay(TimeSpan.FromMilliseconds(100));
-        }
-
-        pipe.Writer.Complete();
-    });
-
-    return pipe.Reader;
+    BuildSegment(pipeWriter);
+    await pipeWriter.FlushAsync();
+    await pipeWriter.CompleteAsync();
 }
 
+// Create pipe & fill it with test data
+var pipe = new Pipe();
+_ = CreateTestDataAsync(pipe.Writer);
 
-var pipeReader = CreateTestDataPipeReader();
+// Read back test data from pipe
 var parser = new SegmentParser();
-await parser.ParseAsync(pipeReader);
+await parser.ParseAsync(pipe.Reader);
 
 Console.WriteLine("Done.");
