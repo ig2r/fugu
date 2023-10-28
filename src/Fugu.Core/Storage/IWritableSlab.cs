@@ -1,6 +1,6 @@
 ﻿namespace Fugu.Storage;
 
-public interface IWritableStorageSlab : IStorageSlab
+public interface IWritableSlab : ISlab
 {
     // For writing: can expose a writable Stream instance. Consumers of this interface can call
     // PipeWriter.Create(stream) on that to obtain a PipeWriter, which implements IBufferWriter<byte>.

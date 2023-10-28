@@ -2,7 +2,7 @@
 
 public interface IBackingStorage
 {
-    ValueTask<IReadOnlyCollection<IStorageSlab>> GetAllSlabsAsync();
-    ValueTask<IWritableStorageSlab> CreateSlabAsync();
-    ValueTask RemoveSlabAsync(IStorageSlab slab);
+    ValueTask<IReadOnlyCollection<ISlab>> GetAllSlabsAsync();
+    ValueTask<IWritableSlab> CreateSlabAsync();
+    ValueTask RemoveSlabAsync(ISlab slab);
 }

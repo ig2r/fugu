@@ -8,7 +8,7 @@
  * - StorageSlab v. StoragePartition v. StorageBlock v. StorageChunk ...
  */
 
-public interface IStorageSlab
+public interface ISlab
 {
     long Length { get; }
 

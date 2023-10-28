@@ -4,8 +4,8 @@ namespace Fugu;
 
 public sealed class ChangeSet
 {
-    private readonly Dictionary<byte[], ReadOnlyMemory<byte>> _upserts = new(ByteArrayEqualityComparer.Shared);
-    private readonly HashSet<byte[]> _removals = new(ByteArrayEqualityComparer.Shared);
+    private readonly Dictionary<byte[], ReadOnlyMemory<byte>> _payloads = new(ByteArrayEqualityComparer.Shared);
+    private readonly HashSet<byte[]> _tombstones = new(ByteArrayEqualityComparer.Shared);
 
     // Name aligns with EF Core's DbSet. Not calling this Add() because:
     // - Dictionary<K, V>.Add() will throw if you try to add an existing key;
@@ -16,7 +16,7 @@ public sealed class ChangeSet
         var keyArray = key.ToArray();
 
         EnsureKeyNotYetTracked(keyArray);
-        _upserts.Add(keyArray, value);
+        _payloads.Add(keyArray, value);
     }
 
     // Name aligns with EF Core's DbSet
@@ -26,7 +26,7 @@ public sealed class ChangeSet
         var keyArray = key.ToArray();
 
         EnsureKeyNotYetTracked(keyArray);
-        _removals.Add(keyArray);
+        _tombstones.Add(keyArray);
     }
 
     // Convenience indexer to enable object initializer syntax
@@ -37,12 +37,12 @@ public sealed class ChangeSet
 
     private void EnsureKeyNotYetTracked(byte[] key)
     {
-        if (_upserts.ContainsKey(key))
+        if (_payloads.ContainsKey(key))
         {
             throw new InvalidOperationException("ChangeSet already tracks the given key for add/update.");
         }
 
-        if (_removals.Contains(key))
+        if (_tombstones.Contains(key))
         {
             throw new InvalidOperationException("ChangeSet already tracks the given key for removal.");
         }

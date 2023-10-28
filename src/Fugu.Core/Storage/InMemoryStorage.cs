@@ -3,9 +3,9 @@
 public sealed class InMemoryStorage : IBackingStorage
 {
     private readonly object _syncRoot = new();
-    private readonly List<IStorageSlab> _slabs = new();
+    private readonly List<ISlab> _slabs = new();
 
-    public ValueTask<IWritableStorageSlab> CreateSlabAsync()
+    public ValueTask<IWritableSlab> CreateSlabAsync()
     {
         var slab = new InMemorySlab();
 
@@ -14,22 +14,22 @@ public sealed class InMemoryStorage : IBackingStorage
             _slabs.Add(slab);
         }
 
-        return ValueTask.FromResult<IWritableStorageSlab>(slab);
+        return ValueTask.FromResult<IWritableSlab>(slab);
     }
 
-    public ValueTask<IReadOnlyCollection<IStorageSlab>> GetAllSlabsAsync()
+    public ValueTask<IReadOnlyCollection<ISlab>> GetAllSlabsAsync()
     {
-        IStorageSlab[] slabs;
+        ISlab[] slabs;
 
         lock (_syncRoot)
         {
             slabs = _slabs.ToArray();
         }
 
-        return ValueTask.FromResult<IReadOnlyCollection<IStorageSlab>>(slabs);
+        return ValueTask.FromResult<IReadOnlyCollection<ISlab>>(slabs);
     }
 
-    public ValueTask RemoveSlabAsync(IStorageSlab slab)
+    public ValueTask RemoveSlabAsync(ISlab slab)
     {
         bool removalSucceeded;
 
