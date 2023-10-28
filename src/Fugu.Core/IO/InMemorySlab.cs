@@ -49,7 +49,7 @@ public class InMemorySlab : IWritableSlab, ISlab
         }
     }
 
-    private class BufferWriterStream : Stream
+    private sealed class BufferWriterStream : Stream
     {
         private readonly IBufferWriter<byte> _bufferWriter;
         private readonly ReaderWriterLockSlim _readerWriterLock;
