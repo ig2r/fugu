@@ -4,6 +4,9 @@ using System.Runtime.InteropServices;
 
 namespace Fugu.IO;
 
+/// <summary>
+/// Low-level utility to read a sequence of primitive values from a <see cref="ReadOnlySpan{T}"/>.
+/// </summary>
 public ref struct SpanReader
 {
     private ReadOnlySpan<byte> _span;

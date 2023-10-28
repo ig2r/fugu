@@ -4,6 +4,9 @@ using System.Runtime.InteropServices;
 
 namespace Fugu.IO;
 
+/// <summary>
+/// Low-level utility to write a sequence of primitive values to a <see cref="Span{T}"/>.
+/// </summary>
 public ref struct SpanWriter
 {
     private Span<byte> _span;

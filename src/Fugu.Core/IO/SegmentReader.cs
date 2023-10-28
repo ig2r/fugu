@@ -8,9 +8,6 @@ namespace Fugu.IO;
 /// </summary>
 public ref struct SegmentReader
 {
-    private const int SegmentHeaderSize = 8 + 2 + 2 + 8 + 8;
-    private const int ChangeSetHeaderSize = 1 + 4 + 4;
-
     private SequenceReader<byte> _sequenceReader;
 
     public SegmentReader(ReadOnlySequence<byte> sequence)
@@ -23,7 +20,7 @@ public ref struct SegmentReader
 
     public bool TryReadSegmentHeader(out long minGeneration, out long maxGeneration)
     {
-        if (!_sequenceReader.TryReadExact(SegmentHeaderSize, out var token))
+        if (!_sequenceReader.TryReadExact(StorageFormat.SegmentHeaderSize, out var token))
         {
             minGeneration = default;
             maxGeneration = default;
@@ -48,7 +45,7 @@ public ref struct SegmentReader
 
     public bool TryReadChangeSetHeader(out int payloadCount, out int tombstoneCount)
     {
-        if (!_sequenceReader.TryReadExact(ChangeSetHeaderSize, out var token))
+        if (!_sequenceReader.TryReadExact(StorageFormat.ChangeSetHeaderSize, out var token))
         {
             payloadCount = default;
             tombstoneCount = default;
@@ -61,16 +58,21 @@ public ref struct SegmentReader
 
         var spanReader = new SpanReader(header);
 
-        spanReader.ReadByte();      // Tag
+        var tag = spanReader.ReadByte();
         payloadCount = spanReader.ReadInt32();
         tombstoneCount = spanReader.ReadInt32();
+
+        if (tag != 1)
+        {
+            throw new InvalidDataException();
+        }
 
         return true;
     }
 
     public bool TryReadPayloadHeader([NotNullWhen(true)] out byte[]? key, out int valueLength)
     {
-        if (!_sequenceReader.TryReadExact(4 + 4, out var token))
+        if (!_sequenceReader.TryReadExact(StorageFormat.PayloadHeaderPrefixSize, out var token))
         {
             key = null;
             valueLength = default;
@@ -89,7 +91,7 @@ public ref struct SegmentReader
         if (_sequenceReader.Remaining < keyLength)
         {
             key = null;
-            _sequenceReader.Rewind(4 + 4);
+            _sequenceReader.Rewind(StorageFormat.PayloadHeaderPrefixSize);
             return false;
         }
 
@@ -101,7 +103,7 @@ public ref struct SegmentReader
 
     public bool TryReadTombstone(out byte[]? key)
     {
-        if (!_sequenceReader.TryReadExact(4, out var token))
+        if (!_sequenceReader.TryReadExact(StorageFormat.TombstonePrefixSize, out var token))
         {
             key = null;
             return false;
@@ -118,7 +120,7 @@ public ref struct SegmentReader
         if (_sequenceReader.Remaining < keyLength)
         {
             key = null;
-            _sequenceReader.Rewind(4);
+            _sequenceReader.Rewind(StorageFormat.TombstonePrefixSize);
             return false;
         }
 
