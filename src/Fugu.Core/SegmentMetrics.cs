@@ -9,7 +9,7 @@
 /// <param name="DeadTombstoneCount">Number of dead tombstones in this segment, e.g., whose key was not in the index when the tombstone was written.</param>
 internal readonly record struct SegmentMetrics(
     int TotalValueCount,
-    // TODO: Can differentiate deleted (= tombstoned) values from displaced (= superceded by newer) values
+    // TODO: Can differentiate deleted (= tombstoned) values from displaced (= superseded by newer) values
     int DeadValueCount,
     int TotalTombstoneCount,
     int DeadTombstoneCount
