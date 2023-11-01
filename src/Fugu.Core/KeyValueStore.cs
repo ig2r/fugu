@@ -76,7 +76,11 @@ public sealed class KeyValueStore : IAsyncDisposable
 
     public async ValueTask SaveAsync(ChangeSet changeSet)
     {
+        // Ask allocation actor to persist this change set, receive back the vector clock value
+        // associated with the write operation. Then, stall until the effects of that write become
+        // observable in snapshots from the store.
         var clock = await _allocationActor.EnqueueChangeSetAsync(changeSet);
+        await _snapshotsActor.WaitForObservableEffectsAsync(clock);
     }
 
     private void Start()

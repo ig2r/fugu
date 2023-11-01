@@ -14,7 +14,6 @@ changeSet.Remove("baz"u8);
 
 await store.SaveAsync(changeSet);
 
-await Task.Delay(Timeout.InfiniteTimeSpan);
 
 //// Create a pre-populated PipeReader for testing
 //static async Task CreateTestDataAsync(PipeWriter pipeWriter)
