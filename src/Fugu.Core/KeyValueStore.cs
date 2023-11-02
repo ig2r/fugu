@@ -71,7 +71,7 @@ public sealed class KeyValueStore : IAsyncDisposable
 
     public ValueTask<Snapshot> GetSnapshotAsync()
     {
-        throw new NotImplementedException();
+        return _snapshotsActor.GetSnapshotAsync();
     }
 
     public async ValueTask SaveAsync(ChangeSet changeSet)

@@ -1,5 +1,6 @@
 ﻿using Fugu.Channels;
 using Fugu.IO;
+using System.Buffers;
 using System.IO.Pipelines;
 using System.Threading.Channels;
 
@@ -41,8 +42,7 @@ public sealed class WriterActor
             if (_outputSegmentPipeWriter is null)
             {
                 _outputSegmentPipeWriter = PipeWriter.Create(message.OutputSlab.Output);
-
-                // TODO: Write segment header
+                WriteSegmentHeader(_outputSegment);
             }
 
             WriteChangeSet(message.ChangeSet);
@@ -55,6 +55,17 @@ public sealed class WriterActor
         }
     }
 
+    private void WriteSegmentHeader(Segment segment)
+    {
+        if (_outputSegmentPipeWriter is null)
+        {
+            throw new InvalidOperationException();
+        }
+
+        var segmentWriter = new SegmentWriter(_outputSegmentPipeWriter);
+        segmentWriter.WriteSegmentHeader(segment.MinGeneration, segment.MaxGeneration);
+    }
+
     private void WriteChangeSet(ChangeSet changeSet)
     {
         if (_outputSegmentPipeWriter is null)
@@ -63,6 +74,24 @@ public sealed class WriterActor
         }
 
         var segmentWriter = new SegmentWriter(_outputSegmentPipeWriter);
-        segmentWriter.WriteChangeSetHeader(payloadCount: 0, tombstoneCount: 0);
+        segmentWriter.WriteChangeSetHeader(changeSet.Payloads.Count, changeSet.Tombstones.Count);
+
+        foreach (var tombstone in changeSet.Tombstones)
+        {
+            segmentWriter.WriteTombstone(tombstone);
+        }
+
+        var payloadValues = new List<ReadOnlyMemory<byte>>(changeSet.Payloads.Count);
+
+        foreach (var payload in changeSet.Payloads)
+        {
+            segmentWriter.WritePayloadHeader(payload.Key, payload.Value.Length);
+            payloadValues.Add(payload.Value);
+        }
+
+        foreach (var payloadValue in payloadValues)
+        {
+            _outputSegmentPipeWriter.Write(payloadValue.Span);
+        }
     }
 }

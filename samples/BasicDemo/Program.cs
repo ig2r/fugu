@@ -11,8 +11,13 @@ var changeSet = new ChangeSet
 };
 
 changeSet.Remove("baz"u8);
-
 await store.SaveAsync(changeSet);
+
+
+using (var snapshot = await store.GetSnapshotAsync())
+{
+
+}
 
 
 //// Create a pre-populated PipeReader for testing

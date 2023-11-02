@@ -7,6 +7,9 @@ public sealed class ChangeSet
     private readonly Dictionary<byte[], ReadOnlyMemory<byte>> _payloads = new(ByteArrayEqualityComparer.Shared);
     private readonly HashSet<byte[]> _tombstones = new(ByteArrayEqualityComparer.Shared);
 
+    internal IReadOnlyDictionary<byte[], ReadOnlyMemory<byte>> Payloads => _payloads;
+    internal IReadOnlySet<byte[]> Tombstones => _tombstones;
+
     // Name aligns with EF Core's DbSet. Not calling this Add() because:
     // - Dictionary<K, V>.Add() will throw if you try to add an existing key;
     // - HashSet<T>.Add() will not add an item if it already exists, and returns a bool to indicate success.
@@ -15,7 +18,7 @@ public sealed class ChangeSet
         // Copy to ensure immutability
         var keyArray = key.ToArray();
 
-        EnsureKeyNotYetTracked(keyArray);
+        ThrowIfKeyAlreadyTracked(keyArray);
         _payloads.Add(keyArray, value);
     }
 
@@ -25,7 +28,7 @@ public sealed class ChangeSet
         // Copy to ensure immutability
         var keyArray = key.ToArray();
 
-        EnsureKeyNotYetTracked(keyArray);
+        ThrowIfKeyAlreadyTracked(keyArray);
         _tombstones.Add(keyArray);
     }
 
@@ -35,7 +38,7 @@ public sealed class ChangeSet
         set => AddOrUpdate(key, value);
     }
 
-    private void EnsureKeyNotYetTracked(byte[] key)
+    private void ThrowIfKeyAlreadyTracked(byte[] key)
     {
         if (_payloads.ContainsKey(key))
         {
