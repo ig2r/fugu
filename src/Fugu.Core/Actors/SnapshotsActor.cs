@@ -10,6 +10,8 @@ public sealed class SnapshotsActor : ISnapshotOwner
     private readonly Channel<IndexUpdated> _indexUpdatedChannel;
 
     private VectorClock _clock;
+    private IReadOnlyDictionary<byte[], IndexEntry> _index = new Dictionary<byte[], IndexEntry>();
+
     private readonly PriorityQueue<TaskCompletionSource, VectorClock> _pendingWaiters = new(
         Comparer<VectorClock>.Create((x, y) =>
         {
@@ -36,6 +38,7 @@ public sealed class SnapshotsActor : ISnapshotOwner
             try
             {
                 _clock = VectorClock.Max(_clock, message.Clock);
+                _index = message.Index;
 
                 // Release any waiters
                 while (_pendingWaiters.TryPeek(out _, out var topItemClock))
@@ -87,7 +90,7 @@ public sealed class SnapshotsActor : ISnapshotOwner
 
         try
         {
-            var snapshot = new Snapshot(this);
+            var snapshot = new Snapshot(this, _index);
             return snapshot;
         }
         finally

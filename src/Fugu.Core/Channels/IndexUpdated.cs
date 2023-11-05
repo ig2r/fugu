@@ -3,5 +3,6 @@
 namespace Fugu.Channels;
 
 public readonly record struct IndexUpdated(
-    VectorClock Clock
+    VectorClock Clock,
+    IReadOnlyDictionary<byte[], IndexEntry> Index
 );

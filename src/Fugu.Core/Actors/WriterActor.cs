@@ -53,6 +53,13 @@ public sealed class WriterActor
 
             WriteChangeSet(message.ChangeSet, ref offset);
             await _outputSegmentPipeWriter.FlushAsync();
+
+            // Propagate changes downstream
+            await _changesWrittenChannel.Writer.WriteAsync(
+                new ChangesWritten(
+                    Clock: message.Clock,
+                    OutputSegment: _outputSegment,
+                    Tombstones: message.ChangeSet.Tombstones));
         }
     }
 
@@ -89,7 +96,7 @@ public sealed class WriterActor
         {
             segmentWriter.WritePayloadHeader(payload.Key, payload.Value.Length);
             payloadValues.Add(payload.Value);
-        }
+        } 
 
         offset += segmentWriter.BytesWritten;
 

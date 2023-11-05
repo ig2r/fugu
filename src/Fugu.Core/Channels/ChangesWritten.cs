@@ -4,5 +4,6 @@ namespace Fugu.Channels;
 
 public readonly record struct ChangesWritten(
     VectorClock Clock,
-    Segment OutputSegment
+    Segment OutputSegment,
+    IReadOnlySet<byte[]> Tombstones
 );
