@@ -24,12 +24,15 @@ public sealed class WriterActor
 
     public async Task RunAsync()
     {
+        long offset = 0;
+
         while (await _changeSetAllocatedChannel.Reader.WaitToReadAsync())
         {
             var message = await _changeSetAllocatedChannel.Reader.ReadAsync();
 
             if (_outputSegment is null || message.OutputSlab != _outputSegment.Slab)
             {
+                // Close out the previous segment, if any
                 if (_outputSegmentPipeWriter is not null)
                 {
                     await _outputSegmentPipeWriter.CompleteAsync();
@@ -39,23 +42,21 @@ public sealed class WriterActor
                 _outputSegment = new Segment(0, 0, message.OutputSlab);
             }
 
+            // Start new segment
             if (_outputSegmentPipeWriter is null)
             {
                 _outputSegmentPipeWriter = PipeWriter.Create(message.OutputSlab.Output);
-                WriteSegmentHeader(_outputSegment);
+                offset = 0;
+
+                WriteSegmentHeader(_outputSegment, ref offset);
             }
 
-            WriteChangeSet(message.ChangeSet);
+            WriteChangeSet(message.ChangeSet, ref offset);
             await _outputSegmentPipeWriter.FlushAsync();
-
-            await _changesWrittenChannel.Writer.WriteAsync(
-                new ChangesWritten(
-                    Clock: message.Clock,
-                    OutputSegment: _outputSegment));
         }
     }
 
-    private void WriteSegmentHeader(Segment segment)
+    private void WriteSegmentHeader(Segment segment, ref long offset)
     {
         if (_outputSegmentPipeWriter is null)
         {
@@ -64,9 +65,10 @@ public sealed class WriterActor
 
         var segmentWriter = new SegmentWriter(_outputSegmentPipeWriter);
         segmentWriter.WriteSegmentHeader(segment.MinGeneration, segment.MaxGeneration);
+        offset += segmentWriter.BytesWritten;
     }
 
-    private void WriteChangeSet(ChangeSet changeSet)
+    private void WriteChangeSet(ChangeSet changeSet, ref long offset)
     {
         if (_outputSegmentPipeWriter is null)
         {
@@ -89,9 +91,14 @@ public sealed class WriterActor
             payloadValues.Add(payload.Value);
         }
 
+        offset += segmentWriter.BytesWritten;
+
         foreach (var payloadValue in payloadValues)
         {
             _outputSegmentPipeWriter.Write(payloadValue.Span);
+
+            // TODO: remember offset and push it downstream to index actor
+            offset += payloadValue.Length;
         }
     }
 }

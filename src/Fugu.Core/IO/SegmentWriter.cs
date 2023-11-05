@@ -11,6 +11,8 @@ public ref struct SegmentWriter
         _bufferWriter = bufferWriter;
     }
 
+    public long BytesWritten { get; private set; }
+
     public void WriteSegmentHeader(long minGeneration, long maxGeneration)
     {
         // TODO: Instead of acquiring a small chunk of memory from _bufferWriter in each call,
@@ -28,6 +30,7 @@ public ref struct SegmentWriter
         writer.WriteInt64(maxGeneration);
 
         _bufferWriter.Advance(StorageFormat.SegmentHeaderSize);
+        BytesWritten += StorageFormat.SegmentHeaderSize;
     }
 
     public void WriteChangeSetHeader(int payloadCount, int tombstoneCount)
@@ -40,6 +43,7 @@ public ref struct SegmentWriter
         writer.WriteInt32(tombstoneCount);
 
         _bufferWriter.Advance(StorageFormat.ChangeSetHeaderSize);
+        BytesWritten += StorageFormat.ChangeSetHeaderSize;
     }
 
     public void WritePayloadHeader(ReadOnlySpan<byte> key, int valueLength)
@@ -50,8 +54,10 @@ public ref struct SegmentWriter
         writer.WriteInt32(key.Length);
         writer.WriteInt32(valueLength);
         _bufferWriter.Advance(StorageFormat.PayloadHeaderPrefixSize);
+        BytesWritten += StorageFormat.PayloadHeaderPrefixSize;
 
         _bufferWriter.Write(key);
+        BytesWritten += key.Length;
     }
 
     public void WriteTombstone(ReadOnlySpan<byte> key)
@@ -61,7 +67,9 @@ public ref struct SegmentWriter
 
         writer.WriteInt32(key.Length);
         _bufferWriter.Advance(StorageFormat.TombstonePrefixSize);
+        BytesWritten += StorageFormat.TombstonePrefixSize;
 
         _bufferWriter.Write(key);
+        BytesWritten += key.Length;
     }
 }
