@@ -51,7 +51,7 @@ public sealed class WriterActor
                 WriteSegmentHeader(_outputSegment, ref offset);
             }
 
-            WriteChangeSet(message.ChangeSet, ref offset);
+            var writtenPayloads = WriteChangeSet(message.ChangeSet, ref offset);
             await _outputSegmentPipeWriter.FlushAsync();
 
             // Propagate changes downstream
@@ -59,6 +59,7 @@ public sealed class WriterActor
                 new ChangesWritten(
                     Clock: message.Clock,
                     OutputSegment: _outputSegment,
+                    Payloads: writtenPayloads,
                     Tombstones: message.ChangeSet.Tombstones));
         }
     }
@@ -75,7 +76,7 @@ public sealed class WriterActor
         offset += segmentWriter.BytesWritten;
     }
 
-    private void WriteChangeSet(ChangeSet changeSet, ref long offset)
+    private IReadOnlyList<WrittenPayload> WriteChangeSet(ChangeSet changeSet, ref long offset)
     {
         if (_outputSegmentPipeWriter is null)
         {
@@ -90,22 +91,24 @@ public sealed class WriterActor
             segmentWriter.WriteTombstone(tombstone);
         }
 
-        var payloadValues = new List<ReadOnlyMemory<byte>>(changeSet.Payloads.Count);
+        var payloads = changeSet.Payloads.ToArray();
+        var writtenPayloads = new List<WrittenPayload>(payloads.Length);
 
-        foreach (var payload in changeSet.Payloads)
+        foreach (var payload in payloads)
         {
             segmentWriter.WritePayloadHeader(payload.Key, payload.Value.Length);
-            payloadValues.Add(payload.Value);
         } 
 
         offset += segmentWriter.BytesWritten;
 
-        foreach (var payloadValue in payloadValues)
+        foreach (var payload in payloads)
         {
-            _outputSegmentPipeWriter.Write(payloadValue.Span);
+            _outputSegmentPipeWriter.Write(payload.Value.Span);
 
-            // TODO: remember offset and push it downstream to index actor
-            offset += payloadValue.Length;
+            writtenPayloads.Add(new WrittenPayload(Key: payload.Key, ValueOffset: offset, ValueLength: payload.Value.Length));
+            offset += payload.Value.Length;
         }
+
+        return writtenPayloads;
     }
 }

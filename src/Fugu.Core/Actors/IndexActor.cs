@@ -25,6 +25,11 @@ public sealed class IndexActor
             var message = await _changesWrittenChannel.Reader.ReadAsync();
 
             var builder = _index.ToBuilder();
+
+            foreach (var payload in message.Payloads)
+            {
+                builder[payload.Key] = new IndexEntry(message.OutputSegment, payload.ValueOffset, payload.ValueLength);
+            }
             
             foreach (var tombstone in message.Tombstones)
             {

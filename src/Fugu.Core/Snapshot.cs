@@ -17,4 +17,9 @@ public sealed class Snapshot : IDisposable
     {
         _owner.OnSnapshotDisposed(this);
     }
+
+    public bool ContainsKey(byte[] key)
+    {
+        return _index.ContainsKey(key);
+    }
 }
