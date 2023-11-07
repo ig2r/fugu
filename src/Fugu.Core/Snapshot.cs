@@ -22,4 +22,12 @@ public sealed class Snapshot : IDisposable
     {
         return _index.ContainsKey(key);
     }
+
+    public async ValueTask<ReadOnlyMemory<byte>> ReadAsync(byte[] key)
+    {
+        var indexEntry = _index[key];
+        var buffer = new byte[indexEntry.Length];
+        await indexEntry.Segment.Slab.ReadAsync(buffer, indexEntry.Offset);
+        return buffer;
+    }
 }
