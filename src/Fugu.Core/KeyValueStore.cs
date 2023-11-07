@@ -61,12 +61,13 @@ public sealed class KeyValueStore : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        // TODO: currently, this will throw when disposing multiple times; should not throw
+        await _allocationActor.CompleteAsync();
+
         if (_runTask is not null)
         {
             await _runTask;
         }
-
-        throw new NotImplementedException();
     }
 
     public ValueTask<Snapshot> GetSnapshotAsync()

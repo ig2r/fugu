@@ -62,6 +62,11 @@ public sealed class WriterActor
                     Payloads: writtenPayloads,
                     Tombstones: message.ChangeSet.Tombstones));
         }
+
+        // TODO: Terminate current output segment, if any
+
+        // Propagate completion
+        _changesWrittenChannel.Writer.Complete();
     }
 
     private void WriteSegmentHeader(Segment segment, ref long offset)

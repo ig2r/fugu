@@ -43,5 +43,8 @@ public sealed class IndexActor
                     Clock: message.Clock,
                     Index: _index));
         }
+
+        // Propagate completion
+        _indexUpdatedChannel.Writer.Complete();
     }
 }

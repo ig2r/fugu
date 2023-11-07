@@ -20,9 +20,23 @@ public sealed class AllocationActor
         _changeSetAllocatedChannel = changeSetAllocatedChannel;
     }
 
-    public async Task RunAsync()
+    public Task RunAsync()
     {
+        return Task.CompletedTask;
+    }
 
+    public async Task CompleteAsync()
+    {
+        await _semaphore.WaitAsync();
+
+        try
+        {
+            _changeSetAllocatedChannel.Writer.Complete();
+        }
+        finally
+        {
+            _semaphore.Release();
+        }
     }
 
     public async ValueTask<VectorClock> EnqueueChangeSetAsync(ChangeSet changeSet)

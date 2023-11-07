@@ -59,6 +59,9 @@ public sealed class SnapshotsActor : ISnapshotOwner
                 _semaphore.Release();
             }
         }
+
+        // TODO: Maybe wait until all open snapshots have been disposed?
+        // Or throw if there are any open snapshots around?
     }
 
     public async ValueTask WaitForObservableEffectsAsync(VectorClock threshold)
