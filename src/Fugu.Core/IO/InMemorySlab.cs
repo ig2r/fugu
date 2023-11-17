@@ -40,8 +40,10 @@ public class InMemorySlab : IWritableSlab, ISlab
 
         try
         {
-            _arrayBufferWriter.WrittenSpan.Slice((int)offset, buffer.Length).CopyTo(buffer.Span);
-            return ValueTask.FromResult(buffer.Length);
+            var availableBytes = Math.Min(buffer.Length, _arrayBufferWriter.WrittenCount - (int)offset);
+            var slice = _arrayBufferWriter.WrittenSpan.Slice((int)offset, availableBytes);
+            slice.CopyTo(buffer.Span);
+            return ValueTask.FromResult(availableBytes);
         }
         finally
         {

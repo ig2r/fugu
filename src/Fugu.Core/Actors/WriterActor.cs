@@ -39,7 +39,7 @@ public sealed class WriterActor
                     _outputSegmentPipeWriter = null;
                 }
 
-                _outputSegment = new Segment(0, 0, message.OutputSlab);
+                _outputSegment = new Segment(1, 1, message.OutputSlab);
             }
 
             // Start new segment

@@ -7,7 +7,6 @@ namespace Fugu;
 
 public sealed class KeyValueStore : IAsyncDisposable
 {
-    private readonly IBackingStorage _storage;
     private readonly AllocationActor _allocationActor;
     private readonly WriterActor _writerActor;
     private readonly IndexActor _indexActor;
@@ -17,14 +16,12 @@ public sealed class KeyValueStore : IAsyncDisposable
     private Task? _runTask;
 
     private KeyValueStore(
-        IBackingStorage storage,
         AllocationActor allocationActor,
         WriterActor writerActor,
         IndexActor indexActor,
         SnapshotsActor snapshotsActor,
         CompactionActor compactionActor)
     {
-        _storage = storage;
         _allocationActor = allocationActor;
         _writerActor = writerActor;
         _indexActor = indexActor;
@@ -32,7 +29,7 @@ public sealed class KeyValueStore : IAsyncDisposable
         _compactionActor = compactionActor;
     }
 
-    public static ValueTask<KeyValueStore> CreateAsync(IBackingStorage storage)
+    public static async ValueTask<KeyValueStore> CreateAsync(IBackingStorage storage)
     {
         // Create channels
         var changeSetAllocatedChannel = Channel.CreateUnbounded<ChangeSetAllocated>();
@@ -46,8 +43,10 @@ public sealed class KeyValueStore : IAsyncDisposable
         var snapshotsActor = new SnapshotsActor(indexUpdatedChannel);
         var compactionActor = new CompactionActor();
 
+        // Load existing data
+        await StoreLoader.LoadFromStorageAsync(storage);
+
         var store = new KeyValueStore(
-            storage,
             allocationActor,
             writerActor,
             indexActor,
@@ -56,7 +55,7 @@ public sealed class KeyValueStore : IAsyncDisposable
 
         store.Start();
 
-        return ValueTask.FromResult(store);
+        return store;
     }
 
     public async ValueTask DisposeAsync()

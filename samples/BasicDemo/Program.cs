@@ -14,7 +14,10 @@ await using (var store = await KeyValueStore.CreateAsync(storage))
 
     changeSet.Remove("baz"u8);
     await store.SaveAsync(changeSet);
+}
 
+await using (var store = await KeyValueStore.CreateAsync(storage))
+{
     using var snapshot = await store.GetSnapshotAsync();
     var result = await snapshot.ReadAsync("foo"u8.ToArray());
 }

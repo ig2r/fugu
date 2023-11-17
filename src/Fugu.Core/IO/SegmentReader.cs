@@ -101,7 +101,7 @@ public ref struct SegmentReader
         return true;
     }
 
-    public bool TryReadTombstone(out byte[]? key)
+    public bool TryReadTombstone([NotNullWhen(true)] out byte[]? key)
     {
         if (!_sequenceReader.TryReadExact(StorageFormat.TombstonePrefixSize, out var token))
         {
