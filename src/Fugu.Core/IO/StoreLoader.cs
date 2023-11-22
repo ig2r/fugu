@@ -58,76 +58,72 @@ public static class StoreLoader
     {
         // Create PipeReader for segment contents beyond header
         PipeReader pipeReader = await GetChangeSetPipeReaderAsync(segment.Slab);
-        
-        long changeSetOffset = StorageFormat.SegmentHeaderSize;
-        var clock = new VectorClock(1, 0);
+        long offset = StorageFormat.SegmentHeaderSize;
 
         while (true)
         {
-            var (changeSet, consumed) = await TryParseChangeSetAsync(pipeReader, changeSetOffset);
+            var parseContext = new ChangeSetParseContext();
+            ReadResult readResult;
 
-            if (changeSet is null)
+            do
             {
-                // Marks completion of the input stream
+                readResult = await pipeReader.ReadAsync();
+                var consumed = ParseChangeSetCore(ref parseContext, offset, readResult);
+                offset += readResult.Buffer.GetOffset(consumed);
+
+                // TODO: if parseContext signals that change set has been fully read, then:
+                // 1. advance pipeReader to "consumed" position, but do NOT mark rest of buffer as examined;
+                // 2. construct WrittenChanges struct (without segment) from parseContext and return that,
+                //    thus breaking from the loop.
+                if (parseContext.Current == ChangeSetParseToken.Completed)
+                {
+                    pipeReader.AdvanceTo(consumed);
+                    break;
+                }
+
+                // Otherwise, we need more data in the buffer to make progress. Mark buffer contents as fully examined
+                // to tell PipeReader.ReadAsync that we need more data.
+                pipeReader.AdvanceTo(consumed, examined: readResult.Buffer.End);
+            }
+            while (!readResult.IsCompleted);
+
+            if (parseContext.Current == ChangeSetParseToken.ChangeSetHeader)
+            {
+                // Parsing failed to even read a change set header? We're done here.
                 break;
             }
+            else if (parseContext.Current == ChangeSetParseToken.Completed)
+            {
+                // Parsing completed a full change set? Return it.
+                var payloads = Enumerable.Zip(
+                    parseContext.PayloadKeys,
+                    parseContext.PayloadValues,
+                    (k, v) => new KeyValuePair<byte[], SlabSubrange>(k, v)).ToArray();
 
-            yield return new ChangesWritten(
-                clock,
-                segment,
-                Array.Empty<KeyValuePair<byte[], SlabSubrange>>(),
-                ImmutableHashSet<byte[]>.Empty);
-
-            changeSetOffset += consumed;
-            clock = clock with { Write = clock.Write + 1 };
+                yield return new ChangesWritten(
+                    new VectorClock(0, 0),
+                    segment,
+                    payloads,
+                    parseContext.Tombstones.ToImmutableHashSet());
+            }
+            else
+            {
+                // Otherwise, parsing aborted in the middle of a change set. Something went wrong.
+                throw new InvalidOperationException("Reading aborted before change set was completed.");
+            }
         }
-
-        yield break;
     }
 
     private static async ValueTask<PipeReader> GetChangeSetPipeReaderAsync(ISlab slab)
     {
         // TODO: this implementation reads the entire slab in one go. This won't work if the slab is larger
         // than 4 GB, in which case it'll need to read chunk-by-chunk.
-        var buffer = new byte[slab.Length -  StorageFormat.SegmentHeaderSize];
+        var buffer = new byte[slab.Length - StorageFormat.SegmentHeaderSize];
         await slab.ReadAsync(buffer, StorageFormat.SegmentHeaderSize);
         return PipeReader.Create(new ReadOnlySequence<byte>(buffer));
     }
 
-    private static async ValueTask<(int? foo, long consumed)>TryParseChangeSetAsync(PipeReader pipeReader, long changeSetOffset)
-    {
-        var parseContext = new ChangeSetParseContext();
-        ReadResult readResult;
-
-        do
-        {
-            readResult = await pipeReader.ReadAsync();
-            var consumed = ParseChangeSetCore(ref parseContext, readResult);
-
-            // TODO: if parseContext signals that change set has been fully read, then:
-            // 1. advance pipeReader to "consumed" position, but do NOT mark rest of buffer as examined;
-            // 2. construct WrittenChanges struct (without segment) from parseContext and return that,
-            //    thus breaking from the loop.
-            if (parseContext.Current == ChangeSetParseToken.Completed)
-            {
-                pipeReader.AdvanceTo(consumed);
-                return (null, 0);
-            }
-
-            // Otherwise, we need more data in the buffer to make progress. Mark buffer contents as fully examined
-            // to tell PipeReader.ReadAsync that we need more data.
-            parseContext.StartOffset += readResult.Buffer.GetOffset(consumed);
-            pipeReader.AdvanceTo(consumed, examined: readResult.Buffer.End);
-        }
-        while (!readResult.IsCompleted);
-
-        // TODO: input stream has completed -- examine parseContext, and if that shows that we were
-        // in the middle of parsing a change set, something obviously went wrong & warrants an exception.
-
-        return (null, 0);
-    }
-
-    private static SequencePosition ParseChangeSetCore(ref ChangeSetParseContext parseContext, ReadResult readResult)
+    private static SequencePosition ParseChangeSetCore(ref ChangeSetParseContext parseContext, long offset, ReadResult readResult)
     {
         var segmentReader = new SegmentReader(readResult.Buffer);
 
@@ -150,6 +146,7 @@ public static class StoreLoader
                         parseContext.RemainingTombstones = tombstoneCount;
                         parseContext.Tombstones = new List<byte[]>(capacity: tombstoneCount);
                         parseContext.PayloadKeys = new List<byte[]>(capacity: payloadCount);
+                        parseContext.PayloadValues = new List<SlabSubrange>(capacity: payloadCount);
                         parseContext.PayloadValueLengths = new Queue<int>(capacity: payloadCount);
 
                         break;
@@ -194,8 +191,7 @@ public static class StoreLoader
                     {
                         while (parseContext.PayloadValueLengths.TryPeek(out var valueLength))
                         {
-                            // Remember where we are in this slab
-                            var offset = readResult.Buffer.GetOffset(segmentReader.Position);
+                            var valueOffset = offset + segmentReader.Consumed;
 
                             if (!segmentReader.TryAdvancePastPayloadValue(valueLength))
                             {
@@ -204,7 +200,8 @@ public static class StoreLoader
 
                             parseContext.PayloadValueLengths.Dequeue();
 
-                            var valueAt = new SlabSubrange(offset + parseContext.StartOffset, valueLength);
+                            var payloadValue = new SlabSubrange(valueOffset, valueLength);
+                            parseContext.PayloadValues.Add(payloadValue);
                         }
 
                         parseContext.Current = ChangeSetParseToken.Completed;
@@ -221,19 +218,18 @@ public static class StoreLoader
 
     private struct ChangeSetParseContext
     {
-        public long StartOffset { get; set; }
-
-        public ChangeSetParseToken Current { get; set; }
-        public int RemainingPayloads { get; set; }
-        public int RemainingTombstones { get; set; }
-        public List<byte[]> Tombstones { get; set; }
-        public List<byte[]> PayloadKeys { get; set; }
-        public Queue<int> PayloadValueLengths { get; set; }
+        public ChangeSetParseToken Current;
+        public int RemainingPayloads;
+        public int RemainingTombstones;
+        public List<byte[]> Tombstones;
+        public List<byte[]> PayloadKeys;
+        public List<SlabSubrange> PayloadValues;
+        public Queue<int> PayloadValueLengths;
     }
 
     private enum ChangeSetParseToken : byte
     {
-        ChangeSetHeader = 0,
+        ChangeSetHeader = default,
         PayloadHeaders,
         Tombstones,
         PayloadValues,
