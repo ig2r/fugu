@@ -1,16 +1,15 @@
-﻿using System.Buffers;
-using System.Data;
-using System.Diagnostics;
+﻿using Fugu.Channels;
+using Fugu.Utils;
+using System.Buffers;
+using System.Collections.Immutable;
 using System.IO.Pipelines;
-using System.Net.NetworkInformation;
-using System.Reflection.Metadata.Ecma335;
-using System.Runtime.CompilerServices;
+using System.Threading.Channels;
 
 namespace Fugu.IO;
 
 public static class StoreLoader
 {
-    public static async Task LoadFromStorageAsync(IBackingStorage storage)
+    public static async Task LoadFromStorageAsync(IBackingStorage storage, Channel<ChangesWritten> changesWrittenChannel)
     {
         var slabs = await storage.GetAllSlabsAsync();
         var segments = new List<Segment>(capacity: slabs.Count);
@@ -23,11 +22,12 @@ public static class StoreLoader
 
         // TODO: order segments, decide on which ones to load & which ones to skip
 
+        // For all change sets across all segments in order, feed these change sets to index actor
         foreach (var segment in segments)
         {
             await foreach (var changeSet in ReadChangeSetsAsync(segment))
             {
-                // TODO: push this change set info to index actor
+                await changesWrittenChannel.Writer.WriteAsync(changeSet);
             }
         }
     }
@@ -51,14 +51,20 @@ public static class StoreLoader
         }
     }
 
-    private static async IAsyncEnumerable<int> ReadChangeSetsAsync(Segment segment)
+    // This level knows the segment, constructs the PipeReader, and tracks authoritative offset in the
+    // segment while reading. Therefore, its job is to yield a sequence of channel messages that can
+    // be readily submitted to the index actor.
+    private static async IAsyncEnumerable<ChangesWritten> ReadChangeSetsAsync(Segment segment)
     {
-        // TODO: create PipeReader for segment contents beyond header
+        // Create PipeReader for segment contents beyond header
         PipeReader pipeReader = await GetChangeSetPipeReaderAsync(segment.Slab);
+        
+        long changeSetOffset = StorageFormat.SegmentHeaderSize;
+        var clock = new VectorClock(1, 0);
 
         while (true)
         {
-            var changeSet = await TryParseChangeSetAsync(pipeReader);
+            var (changeSet, consumed) = await TryParseChangeSetAsync(pipeReader, changeSetOffset);
 
             if (changeSet is null)
             {
@@ -66,7 +72,14 @@ public static class StoreLoader
                 break;
             }
 
-            // TODO: push change set into IndexActor input channel
+            yield return new ChangesWritten(
+                clock,
+                segment,
+                Array.Empty<KeyValuePair<byte[], SlabSubrange>>(),
+                ImmutableHashSet<byte[]>.Empty);
+
+            changeSetOffset += consumed;
+            clock = clock with { Write = clock.Write + 1 };
         }
 
         yield break;
@@ -81,7 +94,7 @@ public static class StoreLoader
         return PipeReader.Create(new ReadOnlySequence<byte>(buffer));
     }
 
-    private static async ValueTask<int?> TryParseChangeSetAsync(PipeReader pipeReader)
+    private static async ValueTask<(int? foo, long consumed)>TryParseChangeSetAsync(PipeReader pipeReader, long changeSetOffset)
     {
         var parseContext = new ChangeSetParseContext();
         ReadResult readResult;
@@ -98,11 +111,12 @@ public static class StoreLoader
             if (parseContext.Current == ChangeSetParseToken.Completed)
             {
                 pipeReader.AdvanceTo(consumed);
-                return null;
+                return (null, 0);
             }
 
             // Otherwise, we need more data in the buffer to make progress. Mark buffer contents as fully examined
             // to tell PipeReader.ReadAsync that we need more data.
+            parseContext.StartOffset += readResult.Buffer.GetOffset(consumed);
             pipeReader.AdvanceTo(consumed, examined: readResult.Buffer.End);
         }
         while (!readResult.IsCompleted);
@@ -110,16 +124,16 @@ public static class StoreLoader
         // TODO: input stream has completed -- examine parseContext, and if that shows that we were
         // in the middle of parsing a change set, something obviously went wrong & warrants an exception.
 
-        return null;
+        return (null, 0);
     }
 
     private static SequencePosition ParseChangeSetCore(ref ChangeSetParseContext parseContext, ReadResult readResult)
     {
         var segmentReader = new SegmentReader(readResult.Buffer);
 
-        // TODO: look at current parse state, and based on that, try to pull the corresponding structure from
-        // segmentReader & update parse state if successful. If unsuccessful, don't update parse state but
-        // return segmentReader.Position instead.
+        // Based on current parse state, try to pull the corresponding structure from segmentReader & update parse state if
+        // successful. If unsuccessful, don't update parse state but return segmentReader.Position instead to signal that
+        // we need more data to proceed.
         while (parseContext.Current != ChangeSetParseToken.Completed)
         {
             switch (parseContext.Current)
@@ -180,12 +194,17 @@ public static class StoreLoader
                     {
                         while (parseContext.PayloadValueLengths.TryPeek(out var valueLength))
                         {
+                            // Remember where we are in this slab
+                            var offset = readResult.Buffer.GetOffset(segmentReader.Position);
+
                             if (!segmentReader.TryAdvancePastPayloadValue(valueLength))
                             {
                                 return segmentReader.Position;
                             }
 
                             parseContext.PayloadValueLengths.Dequeue();
+
+                            var valueAt = new SlabSubrange(offset + parseContext.StartOffset, valueLength);
                         }
 
                         parseContext.Current = ChangeSetParseToken.Completed;
@@ -202,6 +221,8 @@ public static class StoreLoader
 
     private struct ChangeSetParseContext
     {
+        public long StartOffset { get; set; }
+
         public ChangeSetParseToken Current { get; set; }
         public int RemainingPayloads { get; set; }
         public int RemainingTombstones { get; set; }

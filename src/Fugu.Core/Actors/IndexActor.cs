@@ -28,7 +28,7 @@ public sealed class IndexActor
 
             foreach (var payload in message.Payloads)
             {
-                builder[payload.Key] = new IndexEntry(message.OutputSegment, payload.ValueOffset, payload.ValueLength);
+                builder[payload.Key] = new IndexEntry(message.OutputSegment, payload.Value);
             }
             
             foreach (var tombstone in message.Tombstones)

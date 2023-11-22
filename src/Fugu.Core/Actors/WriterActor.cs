@@ -1,5 +1,6 @@
 ﻿using Fugu.Channels;
 using Fugu.IO;
+using Fugu.Utils;
 using System.Buffers;
 using System.IO.Pipelines;
 using System.Threading.Channels;
@@ -81,7 +82,7 @@ public sealed class WriterActor
         offset += segmentWriter.BytesWritten;
     }
 
-    private IReadOnlyList<WrittenPayload> WriteChangeSet(ChangeSet changeSet, ref long offset)
+    private IReadOnlyList<KeyValuePair<byte[], SlabSubrange>> WriteChangeSet(ChangeSet changeSet, ref long offset)
     {
         if (_outputSegmentPipeWriter is null)
         {
@@ -97,7 +98,7 @@ public sealed class WriterActor
         }
 
         var payloads = changeSet.Payloads.ToArray();
-        var writtenPayloads = new List<WrittenPayload>(payloads.Length);
+        var writtenPayloads = new List<KeyValuePair<byte[], SlabSubrange>>(payloads.Length);
 
         foreach (var payload in payloads)
         {
@@ -110,7 +111,7 @@ public sealed class WriterActor
         {
             _outputSegmentPipeWriter.Write(payload.Value.Span);
 
-            writtenPayloads.Add(new WrittenPayload(Key: payload.Key, ValueOffset: offset, ValueLength: payload.Value.Length));
+            writtenPayloads.Add(new(payload.Key, new(offset, payload.Value.Length)));
             offset += payload.Value.Length;
         }
 

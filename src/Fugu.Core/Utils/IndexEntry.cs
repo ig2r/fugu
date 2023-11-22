@@ -2,6 +2,5 @@
 
 public readonly record struct IndexEntry(
     Segment Segment,
-    long Offset,
-    int Length
+    SlabSubrange Subrange
 );

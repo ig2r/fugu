@@ -26,8 +26,8 @@ public sealed class Snapshot : IDisposable
     public async ValueTask<ReadOnlyMemory<byte>> ReadAsync(byte[] key)
     {
         var indexEntry = _index[key];
-        var buffer = new byte[indexEntry.Length];
-        await indexEntry.Segment.Slab.ReadAsync(buffer, indexEntry.Offset);
+        var buffer = new byte[indexEntry.Subrange.Length];
+        await indexEntry.Segment.Slab.ReadAsync(buffer, indexEntry.Subrange.Offset);
         return buffer;
     }
 }

@@ -44,7 +44,7 @@ public sealed class KeyValueStore : IAsyncDisposable
         var compactionActor = new CompactionActor();
 
         // Load existing data
-        await StoreLoader.LoadFromStorageAsync(storage);
+        await StoreLoader.LoadFromStorageAsync(storage, changesWrittenChannel);
 
         var store = new KeyValueStore(
             allocationActor,
