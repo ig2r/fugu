@@ -9,7 +9,7 @@ await using (var store = await KeyValueStore.CreateAsync(storage))
     var changeSet = new ChangeSet
     {
         ["foo"u8] = Encoding.UTF8.GetBytes("Hello, world!"),
-        ["bar"u8] = new byte[0],
+        ["bar"u8] = Array.Empty<byte>(),
     };
 
     changeSet.Remove("baz"u8);
