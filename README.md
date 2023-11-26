@@ -42,7 +42,7 @@ await store.SaveAsync(changeSet);
 // Reads always go through a snapshot
 using (var snapshot = await store.GetSnapshotAsync())
 {
-    var result = await snapshot.ReadAsync("foo"u8.ToArray());
+    var value = await snapshot.ReadAsync("foo"u8);
 }
 
 ```
