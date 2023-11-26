@@ -30,4 +30,11 @@ public sealed class Snapshot : IDisposable
         await indexEntry.Segment.Slab.ReadAsync(buffer, indexEntry.Subrange.Offset);
         return buffer;
     }
+
+    // Convenience overload to make key handling symmetric to ChangeSet methods, which also accept a
+    // ReadOnlySpan-typed key parameter.
+    public ValueTask<ReadOnlyMemory<byte>> ReadAsync(ReadOnlySpan<byte> key)
+    {
+        return ReadAsync(key.ToArray());
+    }
 }

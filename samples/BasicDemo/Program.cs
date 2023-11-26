@@ -1,6 +1,5 @@
 ﻿using Fugu;
 using Fugu.IO;
-using System.Text;
 
 var storage = new InMemoryStorage();
 
@@ -8,7 +7,7 @@ await using (var store = await KeyValueStore.CreateAsync(storage))
 {
     var changeSet = new ChangeSet
     {
-        ["foo"u8] = Encoding.UTF8.GetBytes("Hello, world!"),
+        ["foo"u8] = new byte[10],
         ["bar"u8] = Array.Empty<byte>(),
     };
 
@@ -19,7 +18,7 @@ await using (var store = await KeyValueStore.CreateAsync(storage))
 await using (var store = await KeyValueStore.CreateAsync(storage))
 {
     using var snapshot = await store.GetSnapshotAsync();
-    var result = await snapshot.ReadAsync("foo"u8.ToArray());
+    var result = await snapshot.ReadAsync("foo"u8);
 }
 
 Console.WriteLine("Done.");
