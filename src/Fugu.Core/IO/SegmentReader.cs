@@ -15,11 +15,10 @@ public ref struct SegmentReader
         _sequenceReader = new SequenceReader<byte>(sequence);
     }
 
-    // TODO: Only used by stack-based SegmentParser - can be removed when SegmentParser is fully replaced by StoreLoader
-    public readonly bool End => _sequenceReader.End;
-
+    /// <summary>
+    /// Gets the total number of bytes consumed by the reader.
+    /// </summary>
     public readonly long Consumed => _sequenceReader.Consumed;
-    public readonly SequencePosition Position => _sequenceReader.Position;
 
     public bool TryReadSegmentHeader(out long minGeneration, out long maxGeneration)
     {
