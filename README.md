@@ -53,7 +53,7 @@ Fugu provides its functionality using three major conceptual building blocks:
 
 - A backing storage interface that deals in opaque binary arrays.
 - A mesh of relatively autonomous actors that each implement a specific area of responsibility and communicate through bounded, ring-buffered channels.
-- A frontend `KeyValueStore` type that manages store lifecycle and provides a cohesive API over the underlying actor mesh.
+- A consumer-facing `KeyValueStore` type that manages store lifecycle and provides a cohesive API over the underlying actor mesh.
 
 ### Actors
 

@@ -72,7 +72,9 @@ public static class StoreLoader
             {
                 readResult = await pipeReader.ReadAsync();
                 var consumed = ParseChangeSetCore(ref parseContext, offset, readResult);
-                offset += readResult.Buffer.GetOffset(consumed);
+                var consumedPosition = readResult.Buffer.GetPosition(consumed);
+
+                offset += consumed;
 
                 // TODO: if parseContext signals that change set has been fully read, then:
                 // 1. advance pipeReader to "consumed" position, but do NOT mark rest of buffer as examined;
@@ -80,13 +82,13 @@ public static class StoreLoader
                 //    thus breaking from the loop.
                 if (parseContext.Current == ChangeSetParseToken.Completed)
                 {
-                    pipeReader.AdvanceTo(consumed);
+                    pipeReader.AdvanceTo(consumedPosition);
                     break;
                 }
 
                 // Otherwise, we need more data in the buffer to make progress. Mark buffer contents as fully examined
                 // to tell PipeReader.ReadAsync that we need more data.
-                pipeReader.AdvanceTo(consumed, examined: readResult.Buffer.End);
+                pipeReader.AdvanceTo(consumedPosition, examined: readResult.Buffer.End);
             }
             while (!readResult.IsCompleted);
 
@@ -126,7 +128,7 @@ public static class StoreLoader
         return PipeReader.Create(new ReadOnlySequence<byte>(buffer));
     }
 
-    private static SequencePosition ParseChangeSetCore(ref ChangeSetParseContext parseContext, long offset, ReadResult readResult)
+    private static long ParseChangeSetCore(ref ChangeSetParseContext parseContext, long offset, ReadResult readResult)
     {
         var segmentReader = new SegmentReader(readResult.Buffer);
 
@@ -141,7 +143,7 @@ public static class StoreLoader
                     {
                         if (!segmentReader.TryReadChangeSetHeader(out var payloadCount, out var tombstoneCount))
                         {
-                            return segmentReader.Position;
+                            return segmentReader.Consumed;
                         }
 
                         parseContext.Current = ChangeSetParseToken.Tombstones;
@@ -161,7 +163,7 @@ public static class StoreLoader
                         {
                             if (!segmentReader.TryReadTombstone(out var key))
                             {
-                                return segmentReader.Position;
+                                return segmentReader.Consumed;
                             }
 
                             parseContext.Tombstones.Add(key);
@@ -178,7 +180,7 @@ public static class StoreLoader
                         {
                             if (!segmentReader.TryReadPayloadHeader(out var key, out var valueLength))
                             {
-                                return segmentReader.Position;
+                                return segmentReader.Consumed;
                             }
 
                             parseContext.PayloadKeys.Add(key);
@@ -198,7 +200,7 @@ public static class StoreLoader
 
                             if (!segmentReader.TryAdvancePastPayloadValue(valueLength))
                             {
-                                return segmentReader.Position;
+                                return segmentReader.Consumed;
                             }
 
                             parseContext.PayloadValueLengths.Dequeue();
@@ -216,7 +218,7 @@ public static class StoreLoader
             }
         }
 
-        return segmentReader.Position;
+        return segmentReader.Consumed;
     }
 
     private struct ChangeSetParseContext

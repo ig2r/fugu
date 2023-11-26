@@ -13,7 +13,7 @@ await using (var store = await KeyValueStore.CreateAsync(storage))
 
         var changeSet = new ChangeSet
         {
-            [key] = new byte[10],
+            [key] = Encoding.UTF8.GetBytes($"value:{i}"),
         };
 
         await store.SaveAsync(changeSet);
