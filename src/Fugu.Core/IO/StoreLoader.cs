@@ -20,7 +20,10 @@ public static class StoreLoader
             segments.Add(segment);
         }
 
-        // TODO: order segments, decide on which ones to load & which ones to skip
+        // Order segments, decide on which ones to load & which ones to skip
+        // TODO: The current implementation assumes that generations will never overlap, hence comparing MinGeneration
+        // is sufficient to establish proper ordering. This assumption will NO LONGER BE VALID once we implement compaction.
+        segments.Sort((x, y) => Comparer<long>.Default.Compare(x.MinGeneration, y.MinGeneration));
 
         // For all change sets across all segments in order, feed these change sets to index actor
         foreach (var segment in segments)

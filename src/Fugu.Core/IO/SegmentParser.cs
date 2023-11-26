@@ -5,6 +5,7 @@ namespace Fugu.IO;
 /// <summary>
 /// Parses segment data from a given <see cref="PipeReader"/> input stream.
 /// </summary>
+[Obsolete("TODO: Remove once new bootstrapping mechanism is stable")]
 public class SegmentParser
 {
     public async ValueTask ParseAsync(PipeReader pipeReader, CancellationToken cancellationToken = default)

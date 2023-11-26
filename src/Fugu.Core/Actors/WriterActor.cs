@@ -12,6 +12,7 @@ public sealed class WriterActor
     private readonly Channel<ChangeSetAllocated> _changeSetAllocatedChannel;
     private readonly Channel<ChangesWritten> _changesWrittenChannel;
 
+    private long _outputGeneration = 0;
     private Segment? _outputSegment = null;
     private PipeWriter? _outputSegmentPipeWriter = null;
 
@@ -40,7 +41,8 @@ public sealed class WriterActor
                     _outputSegmentPipeWriter = null;
                 }
 
-                _outputSegment = new Segment(1, 1, message.OutputSlab);
+                _outputGeneration++;
+                _outputSegment = new Segment(_outputGeneration, _outputGeneration, message.OutputSlab);
             }
 
             // Start new segment
