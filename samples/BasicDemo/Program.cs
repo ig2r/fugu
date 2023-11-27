@@ -1,24 +1,34 @@
 ﻿using Fugu;
 using Fugu.IO;
+using System.Text;
 
+const int Iterations = 100;
 var storage = new InMemoryStorage();
 
 await using (var store = await KeyValueStore.CreateAsync(storage))
 {
-    var changeSet = new ChangeSet
+    for (var i = 0; i < Iterations; i++)
     {
-        ["foo"u8] = new byte[10],
-        ["bar"u8] = Array.Empty<byte>(),
-    };
+        var key = Encoding.UTF8.GetBytes($"key:{i}");
 
-    changeSet.Remove("baz"u8);
-    await store.SaveAsync(changeSet);
+        var changeSet = new ChangeSet
+        {
+            [key] = Encoding.UTF8.GetBytes($"value:{i}"),
+        };
+
+        await store.SaveAsync(changeSet);
+    }
 }
 
 await using (var store = await KeyValueStore.CreateAsync(storage))
 {
     using var snapshot = await store.GetSnapshotAsync();
-    var result = await snapshot.ReadAsync("foo"u8);
+
+    for (var i = 0; i < Iterations; i++)
+    {
+        var key = Encoding.UTF8.GetBytes($"key:{i}");
+        var data = await snapshot.ReadAsync(key);
+    }
 }
 
-Console.WriteLine("Done.");
+ Console.WriteLine("Done.");
