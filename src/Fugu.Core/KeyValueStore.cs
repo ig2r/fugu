@@ -36,15 +36,17 @@ public sealed class KeyValueStore : IAsyncDisposable
         var changesWrittenChannel = Channel.CreateUnbounded<ChangesWritten>();
         var indexUpdatedChannel = Channel.CreateUnbounded<IndexUpdated>();
 
-        // Create actors
-        var allocationActor = new AllocationActor(storage, changeSetAllocatedChannel);
-        var writerActor = new WriterActor(changeSetAllocatedChannel, changesWrittenChannel);
+        // Create actors involved in bootstrapping
         var indexActor = new IndexActor(changesWrittenChannel, indexUpdatedChannel);
         var snapshotsActor = new SnapshotsActor(indexUpdatedChannel);
-        var compactionActor = new CompactionActor();
 
         // Load existing data
-        await StoreLoader.LoadFromStorageAsync(storage, changesWrittenChannel);
+        var (maxGeneration, totalBytes) = await StoreLoader.LoadFromStorageAsync(storage, changesWrittenChannel);
+
+        // Create actors involved in writes and balancing
+        var allocationActor = new AllocationActor(storage, changeSetAllocatedChannel, totalBytes);
+        var writerActor = new WriterActor(changeSetAllocatedChannel, changesWrittenChannel, maxGeneration);
+        var compactionActor = new CompactionActor();
 
         var store = new KeyValueStore(
             allocationActor,

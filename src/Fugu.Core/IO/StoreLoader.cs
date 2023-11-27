@@ -9,7 +9,8 @@ namespace Fugu.IO;
 
 public static class StoreLoader
 {
-    public static async Task LoadFromStorageAsync(IBackingStorage storage, Channel<ChangesWritten> changesWrittenChannel)
+    public static async Task<(long MaxGeneration, long TotalBytes)> LoadFromStorageAsync(
+        IBackingStorage storage, Channel<ChangesWritten> changesWrittenChannel)
     {
         var slabs = await storage.GetAllSlabsAsync();
         var segments = new List<Segment>(capacity: slabs.Count);
@@ -25,14 +26,20 @@ public static class StoreLoader
         // is sufficient to establish proper ordering. This assumption will NO LONGER BE VALID once we implement compaction.
         segments.Sort((x, y) => Comparer<long>.Default.Compare(x.MinGeneration, y.MinGeneration));
 
+        long maxGeneration = segments.Count > 0 ? segments.Max(s => s.MaxGeneration) : 0;
+        long totalBytes = 0;
+
         // For all change sets across all segments in order, feed these change sets to index actor
         foreach (var segment in segments)
         {
             await foreach (var changeSet in ReadChangeSetsAsync(segment))
             {
+                totalBytes += changeSet.Payloads.Sum(p => p.Key.Length + p.Value.Length) + changeSet.Tombstones.Sum(t => t.Length);
                 await changesWrittenChannel.Writer.WriteAsync(changeSet);
             }
         }
+
+        return (maxGeneration, totalBytes);
     }
 
     private static async Task<Segment> LoadSegmentHeaderAsync(ISlab slab)

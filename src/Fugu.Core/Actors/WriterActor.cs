@@ -12,16 +12,18 @@ public sealed class WriterActor
     private readonly Channel<ChangeSetAllocated> _changeSetAllocatedChannel;
     private readonly Channel<ChangesWritten> _changesWrittenChannel;
 
-    private long _outputGeneration = 0;
+    private long _outputGeneration;
     private Segment? _outputSegment = null;
     private PipeWriter? _outputSegmentPipeWriter = null;
 
     public WriterActor(
         Channel<ChangeSetAllocated> changeSetAllocatedChannel,
-        Channel<ChangesWritten> changesWrittenChannel)
+        Channel<ChangesWritten> changesWrittenChannel,
+        long maxGeneration)
     {
         _changeSetAllocatedChannel = changeSetAllocatedChannel;
         _changesWrittenChannel = changesWrittenChannel;
+        _outputGeneration = maxGeneration;
     }
 
     public async Task RunAsync()

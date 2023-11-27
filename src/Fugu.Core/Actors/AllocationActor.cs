@@ -23,10 +23,14 @@ public sealed class AllocationActor
     // when switching to a new output slab, not on every submitted change set.
     private long _totalBytesWritten = 0;
 
-    public AllocationActor(IBackingStorage storage, Channel<ChangeSetAllocated> changeSetAllocatedChannel)
+    public AllocationActor(
+        IBackingStorage storage,
+        Channel<ChangeSetAllocated> changeSetAllocatedChannel,
+        long totalBytes)
     {
         _storage = storage;
         _changeSetAllocatedChannel = changeSetAllocatedChannel;
+        _totalBytesWritten = totalBytes;
     }
 
     public Task RunAsync()
