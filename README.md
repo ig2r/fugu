@@ -72,11 +72,11 @@ As with any log-structured persistence scheme, Fugu needs to implement a compact
 
   Consider the cumulative sum of a geometric series with $n$ elements and parameters $(a, r)$:
 
-  $$ S = a \left( \frac{1 - r^n}{1 - r} \right) $$
+  $$S = a \left( \frac{1 - r^n}{1 - r} \right)$$
 
   Solving for $n$ gives us the idealized number of segments in terms of the total amount of data $S$:
 
-  $$ n = log_r \left( 1 - \frac{S}{a} (1 - r) \right) $$
+  $$n = log_r \left( 1 - \frac{S}{a} (1 - r) \right)$$
 
   This $n$ serves two purposes:
 
