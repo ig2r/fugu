@@ -58,13 +58,13 @@ Fugu consists of three major conceptual building blocks:
 
 - **Allocation**: Distributes incoming change sets across slabs in backing storage.
 - **Writer**: Writes out each incoming change set into its assigned slab.
-- **Index**: Keeps track of positions and sizes of written values in backing storage by key. Maintains statistics of "live" and "dead" bytes for each segment.
+- **Index**: Keeps track of positions and sizes of written values in backing storage by key. Maintains statistics of "live" and "stale" bytes for each segment.
 - **Snapshots**: Manages consistent, read-only snapshots of the data.
-- **Compaction**: Preserves space/efficiency invariants, e.g., merging segments when their ratio of "dead" vs. "live" data grows too high.
+- **Compaction**: Preserves space/efficiency invariants, e.g., merging segments when their ratio of "stale" vs. "live" data grows too high.
 
 ## Compaction strategy
 
-As with any log-structured persistence scheme, Fugu needs to implement a compaction scheme to ensure that stale data (e.g., values that have been overwritten or deleted) is periodically garbage collected. To this end, Fugu follows the strategy outlined below:
+As with any log-structured persistence scheme, Fugu needs to implement a compaction scheme to ensure that stale data (e.g., values that have been overwritten or deleted) is periodically garbage collected. The remainder of this section provides an outline of this strategy.
 
 - The store is partitioned into a sequence of segments. Only the most recent segment (the *output segment*) accepts writes.
 - When the output segment reaches a predefined size limit, writes to it will stop and a new, initially empty output segment is started.
