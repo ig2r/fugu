@@ -84,13 +84,11 @@ public sealed class AllocationActor
                 const double a = 100;       // Coefficient, also the size of slab #0
                 const double r = 1.5;       // Common ratio, indicates by how much each added slab should be bigger than the last
 
-                // Derive the idealized sequence index n at which the geometric series with parameters (a, r) would have the
-                // cumulative sum of _totalBytesWritten. Note that n will most likely not be a whole number.
-                double n = Math.Log(1 - ((1 - r) * _totalBytesWritten / a), r);
-
-                // Set the size limit for our new slab to the nth element of the geometric series:
-                _outputSlabSizeLimit = (long)(a * Math.Pow(r, n));
-            }
+                // Set the size limit for our new slab to the nth element of the geometric series. Derived from closed-form
+                // formula for cumulative sum of (a, r) geometric series: S = a * (1 - r^n) / (1 - r)
+                // ...solved for a * r^n.
+                _outputSlabSizeLimit = (long)(a + _totalBytesWritten * (r - 1));
+             }
 
             _outputSlabBytesWritten += changeSetBytes;
 
