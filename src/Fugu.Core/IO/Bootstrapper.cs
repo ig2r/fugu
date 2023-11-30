@@ -7,9 +7,9 @@ using System.Threading.Channels;
 
 namespace Fugu.IO;
 
-public static class StoreLoader
+public static class Bootstrapper
 {
-    public static async Task<(long MaxGeneration, long TotalBytes)> LoadFromStorageAsync(
+    public static async Task<BootstrapResult> LoadFromStorageAsync(
         IBackingStorage storage, Channel<ChangesWritten> changesWrittenChannel)
     {
         var slabs = await storage.GetAllSlabsAsync();
@@ -17,7 +17,7 @@ public static class StoreLoader
 
         foreach (var slab in slabs)
         {
-            var segment = await LoadSegmentHeaderAsync(slab);
+            var segment = await ReadSegmentHeaderAsync(slab);
             segments.Add(segment);
         }
 
@@ -39,10 +39,10 @@ public static class StoreLoader
             }
         }
 
-        return (maxGeneration, totalBytes);
+        return new BootstrapResult(maxGeneration, totalBytes);
     }
 
-    private static async Task<Segment> LoadSegmentHeaderAsync(ISlab slab)
+    private static async Task<Segment> ReadSegmentHeaderAsync(ISlab slab)
     {
         if (slab.Length < StorageFormat.SegmentHeaderSize)
         {
@@ -51,9 +51,9 @@ public static class StoreLoader
 
         var headerBytes = new byte[StorageFormat.SegmentHeaderSize];
         await slab.ReadAsync(headerBytes, 0);
-        return ParseSegmentHeader();
+        return ParseSegmentHeader(headerBytes);
 
-        Segment ParseSegmentHeader()
+        Segment ParseSegmentHeader(byte[] headerBytes)
         {
             var segmentReader = new SegmentReader(new ReadOnlySequence<byte>(headerBytes));
             segmentReader.TryReadSegmentHeader(out var minGeneration, out var maxGeneration);
