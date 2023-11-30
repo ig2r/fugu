@@ -20,4 +20,12 @@ await using (var store = await KeyValueStore.CreateAsync(storage))
 
         await store.SaveAsync(changeSet);
     }
+
+    using (var snapshot = await store.GetSnapshotAsync())
+    {
+        foreach (var key in snapshot.Keys)
+        {
+            Console.WriteLine($"Key: {Encoding.UTF8.GetString(key.ToArray())}");
+        }
+    }
 }
