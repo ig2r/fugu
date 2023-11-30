@@ -21,7 +21,7 @@ public sealed class AllocationActor
 
     // Measures the total amount of data written to the store, across all segments. Note that this is updated only
     // when switching to a new output slab, not on every submitted change set.
-    private long _totalBytesWritten = 0;
+    private long _totalBytes = 0;
 
     public AllocationActor(
         IBackingStorage storage,
@@ -30,7 +30,7 @@ public sealed class AllocationActor
     {
         _storage = storage;
         _changeSetAllocatedChannel = changeSetAllocatedChannel;
-        _totalBytesWritten = totalBytes;
+        _totalBytes = totalBytes;
     }
 
     public Task RunAsync()
@@ -63,13 +63,10 @@ public sealed class AllocationActor
                 Write = _clock.Write + 1,
             };
 
-            // Number of key/value bytes in current change set
-            var changeSetBytes = changeSet.Payloads.Sum(p => p.Key.Length + p.Value.Length) + changeSet.Tombstones.Sum(t => t.Length);
-
             // If we have reached the size limit for the current output slab, stop writing to it so we'll create a new one
             if (_outputSlab is not null && _outputSlabBytesWritten >= _outputSlabSizeLimit)
             {
-                _totalBytesWritten += _outputSlabBytesWritten;
+                _totalBytes += _outputSlabBytesWritten;
 
                 _outputSlab = null;
                 _outputSlabBytesWritten = 0;
@@ -87,10 +84,10 @@ public sealed class AllocationActor
                 // Set the size limit for our new slab to the nth element of the geometric series. Derived from closed-form
                 // formula for cumulative sum of (a, r) geometric series: S = a * (1 - r^n) / (1 - r)
                 // ...solved for a * r^n.
-                _outputSlabSizeLimit = (long)(a + _totalBytesWritten * (r - 1));
+                _outputSlabSizeLimit = (long)(a + _totalBytes * (r - 1));
              }
 
-            _outputSlabBytesWritten += changeSetBytes;
+            _outputSlabBytesWritten += ChangeSetUtils.GetDataBytes(changeSet);
 
             await _changeSetAllocatedChannel.Writer.WriteAsync(
                 new ChangeSetAllocated(

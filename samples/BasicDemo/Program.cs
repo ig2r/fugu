@@ -7,9 +7,11 @@ var storage = new InMemoryStorage();
 
 await using (var store = await KeyValueStore.CreateAsync(storage))
 {
+    var random = new Random();
+
     for (var i = 0; i < Iterations; i++)
     {
-        var key = Encoding.UTF8.GetBytes($"key:{i}");
+        var key = Encoding.UTF8.GetBytes($"key:{random.Next(50)}");
 
         var changeSet = new ChangeSet
         {
@@ -19,16 +21,3 @@ await using (var store = await KeyValueStore.CreateAsync(storage))
         await store.SaveAsync(changeSet);
     }
 }
-
-await using (var store = await KeyValueStore.CreateAsync(storage))
-{
-    using var snapshot = await store.GetSnapshotAsync();
-
-    for (var i = 0; i < Iterations; i++)
-    {
-        var key = Encoding.UTF8.GetBytes($"key:{i}");
-        var data = await snapshot.ReadAsync(key);
-    }
-}
-
- Console.WriteLine("Done.");
