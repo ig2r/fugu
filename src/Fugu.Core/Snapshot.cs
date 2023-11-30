@@ -1,4 +1,5 @@
 ﻿using Fugu.Utils;
+using System.Collections;
 
 namespace Fugu;
 
@@ -12,6 +13,8 @@ public sealed class Snapshot : IDisposable
         _owner = owner;
         _index = index;
     }
+
+    public IEnumerable<IReadOnlyList<byte>> Keys => _index.Keys;
 
     public void Dispose()
     {
