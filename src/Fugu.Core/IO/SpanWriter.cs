@@ -18,7 +18,7 @@ public ref struct SpanWriter
 
     public void WriteByte(byte value)
     {
-        MemoryMarshal.Write(_span, ref value);
+        MemoryMarshal.Write(_span, value);
         _span = _span.Slice(Unsafe.SizeOf<byte>());
     }
 
