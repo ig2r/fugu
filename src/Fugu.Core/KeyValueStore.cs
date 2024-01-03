@@ -32,11 +32,24 @@ public sealed class KeyValueStore : IAsyncDisposable
     public static async ValueTask<KeyValueStore> CreateAsync(IBackingStorage storage)
     {
         // Create channels
-        var changeSetAllocatedChannel = Channel.CreateUnbounded<ChangeSetAllocated>();
-        var changesWrittenChannel = Channel.CreateUnbounded<ChangesWritten>();
-        var indexUpdatedChannel = Channel.CreateUnbounded<IndexUpdated>();
+        var changeSetAllocatedChannel = Channel.CreateUnbounded<ChangeSetAllocated>(new UnboundedChannelOptions
+        {
+            AllowSynchronousContinuations = true,
+        });
+
+        var changesWrittenChannel = Channel.CreateUnbounded<ChangesWritten>(new UnboundedChannelOptions
+        {
+            AllowSynchronousContinuations = true,
+        });
+
+        var indexUpdatedChannel = Channel.CreateUnbounded<IndexUpdated>(new UnboundedChannelOptions
+        {
+            AllowSynchronousContinuations = true,
+        });
+
         var segmentStatsUpdatedChannel = Channel.CreateBounded<SegmentStatsUpdated>(new BoundedChannelOptions(1)
         {
+            AllowSynchronousContinuations = false,
             FullMode = BoundedChannelFullMode.DropNewest,
         });
 
