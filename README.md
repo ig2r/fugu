@@ -62,6 +62,24 @@ Fugu consists of three major conceptual building blocks:
 - **Snapshots**: Manages consistent, read-only snapshots of the data.
 - **Compaction**: Preserves space/efficiency invariants, e.g., merging segments when their ratio of "stale" vs. "live" data grows too high.
 
+The following diagram illustrates messaging paths between actors and the `KeyValueStore` facade.
+
+```mermaid
+graph TD;
+    KeyValueStore(KeyValueStore facade);
+    KeyValueStore -- Submit change set --> Allocation;
+    KeyValueStore -- Acquire/release --> Snapshots;
+
+    Allocation -- ChangeSetAllocated --> Writer;
+    Writer -- ChangesWritten --> Index;
+    Index -- IndexUpdated --> Snapshots;
+
+    Index -- SegmentStatsUpdated --> Compaction;
+    Snapshots -- TBD --> Compaction;
+    Compaction -- TBD --> Index;
+    Compaction -- TBD --> Allocation;
+```
+
 ## Compaction strategy
 
 As with any log-structured persistence scheme, Fugu needs to implement a compaction scheme to ensure that stale data (e.g., values that have been overwritten or deleted) is periodically garbage collected. The remainder of this section provides an outline of this strategy.
