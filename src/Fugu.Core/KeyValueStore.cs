@@ -35,9 +35,13 @@ public sealed class KeyValueStore : IAsyncDisposable
         var changeSetAllocatedChannel = Channel.CreateUnbounded<ChangeSetAllocated>();
         var changesWrittenChannel = Channel.CreateUnbounded<ChangesWritten>();
         var indexUpdatedChannel = Channel.CreateUnbounded<IndexUpdated>();
+        var segmentStatsUpdatedChannel = Channel.CreateBounded<SegmentStatsUpdated>(new BoundedChannelOptions(1)
+        {
+            FullMode = BoundedChannelFullMode.DropNewest,
+        });
 
         // Create actors involved in bootstrapping
-        var indexActor = new IndexActor(changesWrittenChannel, indexUpdatedChannel);
+        var indexActor = new IndexActor(changesWrittenChannel, indexUpdatedChannel, segmentStatsUpdatedChannel);
         var snapshotsActor = new SnapshotsActor(indexUpdatedChannel);
 
         // Load existing data
@@ -46,7 +50,7 @@ public sealed class KeyValueStore : IAsyncDisposable
         // Create actors involved in writes and balancing
         var allocationActor = new AllocationActor(storage, changeSetAllocatedChannel, bootstrapResult.TotalBytes);
         var writerActor = new WriterActor(changeSetAllocatedChannel, changesWrittenChannel, bootstrapResult.MaxGeneration);
-        var compactionActor = new CompactionActor();
+        var compactionActor = new CompactionActor(segmentStatsUpdatedChannel);
 
         var store = new KeyValueStore(
             allocationActor,

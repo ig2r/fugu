@@ -9,14 +9,19 @@ public sealed partial class IndexActor
 {
     private readonly Channel<ChangesWritten> _changesWrittenChannel;
     private readonly Channel<IndexUpdated> _indexUpdatedChannel;
+    private readonly Channel<SegmentStatsUpdated> _segmentStatsUpdatedChannel;
 
     private ImmutableDictionary<byte[], IndexEntry> _index = ImmutableDictionary.Create<byte[], IndexEntry>(ByteArrayEqualityComparer.Shared);
     private readonly SegmentStatsTracker _statsTracker = new();
 
-    public IndexActor(Channel<ChangesWritten> changesWrittenChannel, Channel<IndexUpdated> indexUpdatedChannel)
+    public IndexActor(
+        Channel<ChangesWritten> changesWrittenChannel,
+        Channel<IndexUpdated> indexUpdatedChannel,
+        Channel<SegmentStatsUpdated> segmentStatsUpdatedChannel)
     {
         _changesWrittenChannel = changesWrittenChannel;
         _indexUpdatedChannel = indexUpdatedChannel;
+        _segmentStatsUpdatedChannel = segmentStatsUpdatedChannel;
     }
 
     public async Task RunAsync()
@@ -59,9 +64,15 @@ public sealed partial class IndexActor
                     Index: _index));
 
             var stats = _statsTracker.ToImmutable();
+
+            await _segmentStatsUpdatedChannel.Writer.WriteAsync(
+                new SegmentStatsUpdated(
+                    Clock: message.Clock,
+                    Stats: stats));
         }
 
         // Propagate completion
         _indexUpdatedChannel.Writer.Complete();
+        _segmentStatsUpdatedChannel.Writer.Complete();
     }
 }
