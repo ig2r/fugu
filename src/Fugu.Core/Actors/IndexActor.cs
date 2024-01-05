@@ -49,10 +49,10 @@ public sealed partial class IndexActor
             {
                 if (indexBuilder.TryGetValue(tombstone, out var previousIndexEntry))
                 {
-                    indexBuilder.Remove(tombstone);
                     _statsTracker.OnIndexEntryDisplaced(tombstone, previousIndexEntry);
                 }
 
+                indexBuilder.Remove(tombstone);
                 _statsTracker.OnTombstoneAdded(message.OutputSegment, tombstone);
             }
 

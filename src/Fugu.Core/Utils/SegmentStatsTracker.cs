@@ -5,6 +5,8 @@ namespace Fugu.Utils;
 public sealed class SegmentStatsTracker
 {
     private readonly ImmutableSortedDictionary<Segment, SegmentStats>.Builder _statsBuilder;
+    private Segment? _outputSegment = null;
+    private SegmentStats _outputSegmentStats = new();
 
     public SegmentStatsTracker()
     {
@@ -30,34 +32,61 @@ public sealed class SegmentStatsTracker
     public void OnIndexEntryDisplaced(byte[] key, IndexEntry indexEntry)
     {
         var byteCount = key.Length + indexEntry.Subrange.Length;
-        var stats = _statsBuilder[indexEntry.Segment];
 
-        _statsBuilder[indexEntry.Segment] = stats with
+        if (indexEntry.Segment == _outputSegment)
         {
-            StaleBytes = stats.StaleBytes + byteCount,
-        };
+            _outputSegmentStats = _outputSegmentStats with
+            {
+                StaleBytes = _outputSegmentStats.StaleBytes + byteCount,
+            };
+        }
+        else
+        {
+            var stats = _statsBuilder[indexEntry.Segment];
+
+            _statsBuilder[indexEntry.Segment] = stats with
+            {
+                StaleBytes = stats.StaleBytes + byteCount,
+            };
+        }
     }
 
     public void OnPayloadAdded(Segment segment, KeyValuePair<byte[], SlabSubrange> payload)
     {
-        var byteCount = payload.Key.Length + payload.Value.Length;
-        var stats = _statsBuilder.TryGetValue(segment, out var s) ? s : new();
+        UseOutputSegment(segment);
 
-        _statsBuilder[segment] = stats with
+        var byteCount = payload.Key.Length + payload.Value.Length;
+        _outputSegmentStats = _outputSegmentStats with
         {
-            TotalBytes = stats.TotalBytes + byteCount,
+            TotalBytes = _outputSegmentStats.TotalBytes + byteCount,
         };
     }
 
     public void OnTombstoneAdded(Segment segment, byte[] tombstone)
     {
-        var byteCount = tombstone.Length;
-        var stats = _statsBuilder.TryGetValue(segment, out var s) ? s : new();
+        UseOutputSegment(segment);
 
-        _statsBuilder[segment] = stats with
+        var byteCount = tombstone.Length;
+        _outputSegmentStats = _outputSegmentStats with
         {
-            TotalBytes = stats.TotalBytes + byteCount,
-            StaleBytes = stats.StaleBytes + byteCount,
+            TotalBytes = _outputSegmentStats.TotalBytes + byteCount,
+            StaleBytes = _outputSegmentStats.StaleBytes + byteCount,
         };
+    }
+
+    private void UseOutputSegment(Segment segment)
+    {
+        if (_outputSegment == segment)
+        {
+            return;
+        }
+
+        if (_outputSegment is not null)
+        {
+            _statsBuilder[_outputSegment] = _outputSegmentStats;
+        }
+
+        _outputSegment = segment;
+        _outputSegmentStats = new();
     }
 }
