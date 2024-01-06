@@ -65,10 +65,13 @@ public sealed partial class IndexActor
 
             var stats = _statsTracker.ToImmutable();
 
-            await _segmentStatsUpdatedChannel.Writer.WriteAsync(
-                new SegmentStatsUpdated(
-                    Clock: message.Clock,
-                    Stats: stats));
+            if (!stats.IsEmpty)
+            {
+                await _segmentStatsUpdatedChannel.Writer.WriteAsync(
+                    new SegmentStatsUpdated(
+                        Clock: message.Clock,
+                        Stats: stats));
+            }
         }
 
         // Propagate completion
