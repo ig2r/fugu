@@ -9,6 +9,7 @@ public sealed class AllocationActor
 {
     private readonly SemaphoreSlim _semaphore = new(1);
     private readonly IBackingStorage _storage;
+    private readonly Channel<SegmentsCompacted> _segmentsCompactedChannel;
     private readonly Channel<ChangeSetAllocated> _changeSetAllocatedChannel;
     
     private VectorClock _clock = new(Write: 0, Compaction: 0);
@@ -25,17 +26,33 @@ public sealed class AllocationActor
 
     public AllocationActor(
         IBackingStorage storage,
+        Channel<SegmentsCompacted> segmentsCompactedChannel,
         Channel<ChangeSetAllocated> changeSetAllocatedChannel,
         long totalBytes)
     {
         _storage = storage;
+        _segmentsCompactedChannel = segmentsCompactedChannel;
         _changeSetAllocatedChannel = changeSetAllocatedChannel;
         _totalBytes = totalBytes;
     }
 
-    public Task RunAsync()
+    public async Task RunAsync()
     {
-        return Task.CompletedTask;
+        while (await _segmentsCompactedChannel.Reader.WaitToReadAsync())
+        {
+            var message = await _segmentsCompactedChannel.Reader.ReadAsync();
+            await _semaphore.WaitAsync();
+
+            try
+            {
+                _clock = VectorClock.Max(_clock, message.Clock);
+                _totalBytes += message.CapacityChange;
+            }
+            finally
+            {
+                _semaphore.Release();
+            }
+        }
     }
 
     public async Task CompleteAsync()

@@ -8,7 +8,7 @@ public sealed class SnapshotsActor : ISnapshotOwner
 {
     private readonly SemaphoreSlim _semaphore = new(1);
     private readonly Channel<IndexUpdated> _indexUpdatedChannel;
-
+    private readonly Channel<OldestObservableSnapshotChanged> _oldestObservableSnapshotChangedChannel;
     private VectorClock _clock;
     private IReadOnlyDictionary<byte[], IndexEntry> _index = new Dictionary<byte[], IndexEntry>();
 
@@ -23,9 +23,12 @@ public sealed class SnapshotsActor : ISnapshotOwner
                 : componentComparer.Compare(x.Compaction, y.Compaction);
         }));
 
-    public SnapshotsActor(Channel<IndexUpdated> indexUpdatedChannel)
+    public SnapshotsActor(
+        Channel<IndexUpdated> indexUpdatedChannel,
+        Channel<OldestObservableSnapshotChanged> oldestObservableSnapshotChangedChannel)
     {
         _indexUpdatedChannel = indexUpdatedChannel;
+        _oldestObservableSnapshotChangedChannel = oldestObservableSnapshotChangedChannel;
     }
 
     public async Task RunAsync()
@@ -62,6 +65,8 @@ public sealed class SnapshotsActor : ISnapshotOwner
 
         // TODO: Maybe wait until all open snapshots have been disposed?
         // Or throw if there are any open snapshots around?
+
+        _oldestObservableSnapshotChangedChannel.Writer.Complete();
     }
 
     public async ValueTask WaitForObservableEffectsAsync(VectorClock threshold)
