@@ -70,7 +70,8 @@ public sealed partial class IndexActor
                 await _segmentStatsUpdatedChannel.Writer.WriteAsync(
                     new SegmentStatsUpdated(
                         Clock: message.Clock,
-                        Stats: stats));
+                        Stats: stats,
+                        Index: _index));
             }
         }
 

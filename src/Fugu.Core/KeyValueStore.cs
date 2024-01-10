@@ -87,6 +87,7 @@ public sealed class KeyValueStore : IAsyncDisposable
         var allocationActor = new AllocationActor(storage, segmentsCompactedChannel, changeSetAllocatedChannel, bootstrapResult.TotalBytes);
         var writerActor = new WriterActor(changeSetAllocatedChannel, changesWrittenChannel, bootstrapResult.MaxGeneration);
         var compactionActor = new CompactionActor(
+            storage,
             segmentStatsUpdatedChannel,
             oldestObservableSnapshotChangedChannel,
             changesWrittenChannel,

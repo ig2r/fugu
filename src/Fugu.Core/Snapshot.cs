@@ -8,11 +8,17 @@ public sealed class Snapshot : IDisposable
     private readonly ISnapshotOwner _owner;
     private readonly IReadOnlyDictionary<byte[], IndexEntry> _index;
 
-    internal Snapshot(ISnapshotOwner owner, IReadOnlyDictionary<byte[], IndexEntry> index)
+    internal Snapshot(
+        ISnapshotOwner owner,
+        VectorClock clock,
+        IReadOnlyDictionary<byte[], IndexEntry> index)
     {
         _owner = owner;
+        Clock = clock;
         _index = index;
     }
+    
+    public VectorClock Clock { get; }
 
     public IEnumerable<IReadOnlyList<byte>> Keys => _index.Keys;
 
