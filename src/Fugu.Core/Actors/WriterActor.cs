@@ -1,8 +1,5 @@
 ﻿using Fugu.Channels;
 using Fugu.IO;
-using Fugu.Utils;
-using System.Buffers;
-using System.IO.Pipelines;
 using System.Threading.Channels;
 
 namespace Fugu.Actors;
@@ -13,8 +10,7 @@ public sealed class WriterActor
     private readonly Channel<ChangesWritten> _changesWrittenChannel;
 
     private long _outputGeneration;
-    private Segment? _outputSegment = null;
-    private PipeWriter? _outputSegmentPipeWriter = null;
+    private SegmentBuilder? _segmentBuilder;
 
     public WriterActor(
         Channel<ChangeSetAllocated> changeSetAllocatedChannel,
@@ -28,42 +24,32 @@ public sealed class WriterActor
 
     public async Task RunAsync()
     {
-        long offset = 0;
-
         while (await _changeSetAllocatedChannel.Reader.WaitToReadAsync())
         {
             var message = await _changeSetAllocatedChannel.Reader.ReadAsync();
 
-            if (_outputSegment is null || message.OutputSlab != _outputSegment.Slab)
+            if (_segmentBuilder is null || message.OutputSlab != _segmentBuilder.Segment.Slab)
             {
                 // Close out the previous segment, if any
-                if (_outputSegmentPipeWriter is not null)
+                if (_segmentBuilder is not null)
                 {
-                    await _outputSegmentPipeWriter.CompleteAsync();
-                    _outputSegmentPipeWriter = null;
+                    await _segmentBuilder.CompleteAsync();
+                    _segmentBuilder = null;
                 }
 
                 _outputGeneration++;
-                _outputSegment = new Segment(_outputGeneration, _outputGeneration, message.OutputSlab);
             }
 
-            // Start new segment
-            if (_outputSegmentPipeWriter is null)
-            {
-                _outputSegmentPipeWriter = PipeWriter.Create(message.OutputSlab.Output);
-                offset = 0;
+            // Start new segment if needed
+            _segmentBuilder ??= SegmentBuilder.Create(message.OutputSlab, _outputGeneration, _outputGeneration);
 
-                WriteSegmentHeader(_outputSegment, ref offset);
-            }
-
-            var writtenPayloads = WriteChangeSet(message.ChangeSet, ref offset);
-            await _outputSegmentPipeWriter.FlushAsync();
+            var writtenPayloads = await _segmentBuilder.WriteChangeSetAsync(message.ChangeSet);
 
             // Propagate changes downstream
             await _changesWrittenChannel.Writer.WriteAsync(
                 new ChangesWritten(
                     Clock: message.Clock,
-                    OutputSegment: _outputSegment,
+                    OutputSegment: _segmentBuilder.Segment,
                     Payloads: writtenPayloads,
                     Tombstones: message.ChangeSet.Tombstones));
         }
@@ -72,53 +58,5 @@ public sealed class WriterActor
 
         // Propagate completion
         _changesWrittenChannel.Writer.Complete();
-    }
-
-    private void WriteSegmentHeader(Segment segment, ref long offset)
-    {
-        if (_outputSegmentPipeWriter is null)
-        {
-            throw new InvalidOperationException();
-        }
-
-        var segmentWriter = new SegmentWriter(_outputSegmentPipeWriter);
-        segmentWriter.WriteSegmentHeader(segment.MinGeneration, segment.MaxGeneration);
-        offset += segmentWriter.BytesWritten;
-    }
-
-    private IReadOnlyList<KeyValuePair<byte[], SlabSubrange>> WriteChangeSet(ChangeSet changeSet, ref long offset)
-    {
-        if (_outputSegmentPipeWriter is null)
-        {
-            throw new InvalidOperationException();
-        }
-
-        var segmentWriter = new SegmentWriter(_outputSegmentPipeWriter);
-        segmentWriter.WriteChangeSetHeader(changeSet.Payloads.Count, changeSet.Tombstones.Count);
-
-        foreach (var tombstone in changeSet.Tombstones)
-        {
-            segmentWriter.WriteTombstone(tombstone);
-        }
-
-        var payloads = changeSet.Payloads.ToArray();
-        var writtenPayloads = new List<KeyValuePair<byte[], SlabSubrange>>(payloads.Length);
-
-        foreach (var payload in payloads)
-        {
-            segmentWriter.WritePayloadHeader(payload.Key, payload.Value.Length);
-        } 
-
-        offset += segmentWriter.BytesWritten;
-
-        foreach (var payload in payloads)
-        {
-            _outputSegmentPipeWriter.Write(payload.Value.Span);
-
-            writtenPayloads.Add(new(payload.Key, new(offset, payload.Value.Length)));
-            offset += payload.Value.Length;
-        }
-
-        return writtenPayloads;
     }
 }
