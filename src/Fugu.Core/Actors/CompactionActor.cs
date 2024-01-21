@@ -1,6 +1,7 @@
 ﻿using Fugu.Channels;
 using Fugu.IO;
 using Fugu.Utils;
+using System.IO.Pipelines;
 using System.Threading.Channels;
 
 namespace Fugu.Actors;
@@ -101,10 +102,11 @@ public sealed class CompactionActor
                         Compaction = message.Clock.Compaction + 1,
                     };
 
-                    // TODO: Compact
+                    // Prepare compaction segment
+                    var outputSlab = await _storage.CreateSlabAsync();
+                    var outputSegment = new Segment(minGeneration, maxGeneration, outputSlab);
 
-                    var compactedSlab = await _storage.CreateSlabAsync();
-                    var compactedSegment = new Segment(minGeneration, maxGeneration, compactedSlab);
+                    CompactSegments(outputSlab, minGeneration, maxGeneration, sourceStats.Select(kvp => kvp.Key).ToArray());
 
                     // WriterActor will complete the "ChangesWritten" channel when the store shuts down,
                     // so we have to make sure it's still there before writing to it.
@@ -115,7 +117,7 @@ public sealed class CompactionActor
                                 Clock: compactedClock,
                                 Payloads: Array.Empty<KeyValuePair<byte[], SlabSubrange>>(),
                                 Tombstones: new HashSet<byte[]>(),
-                                OutputSegment: compactedSegment
+                                OutputSegment: outputSegment
                             ));
 
                         if (succeeded)
@@ -168,5 +170,14 @@ public sealed class CompactionActor
                 _semaphore.Release();
             }
         }
+    }
+
+    private void CompactSegments(IWritableSlab outputSlab, long minGeneration, long maxGeneration, Segment[] segments)
+    {
+        var pipeWriter = PipeWriter.Create(outputSlab.Output);
+        var segmentWriter = new SegmentWriter(pipeWriter);
+
+        // Header
+        segmentWriter.WriteSegmentHeader(minGeneration, maxGeneration);
     }
 }
