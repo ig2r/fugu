@@ -41,7 +41,7 @@ public sealed class WriterActor
             }
 
             // Start new segment if needed
-            _segmentBuilder ??= SegmentBuilder.Create(message.OutputSlab, _outputGeneration, _outputGeneration);
+            _segmentBuilder ??= await SegmentBuilder.CreateAsync(message.OutputSlab, _outputGeneration, _outputGeneration);
 
             var writtenPayloads = await _segmentBuilder.WriteChangeSetAsync(message.ChangeSet);
 

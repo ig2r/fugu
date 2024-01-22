@@ -21,16 +21,22 @@ public sealed class SegmentBuilder
 
     public Segment Segment { get; }
 
-    public static SegmentBuilder Create(IWritableSlab outputSlab, long minGeneration, long maxGeneration)
+    public static async ValueTask<SegmentBuilder> CreateAsync(IWritableSlab outputSlab, long minGeneration, long maxGeneration)
     {
         var segment = new Segment(minGeneration, maxGeneration, outputSlab);
         var pipeWriter = PipeWriter.Create(outputSlab.Output);
-        var segmentWriter = new SegmentWriter(pipeWriter);
+        var initialOffset = WriteSegmentHeader();
+        await pipeWriter.FlushAsync();
 
-        segmentWriter.WriteSegmentHeader(segment.MinGeneration, segment.MaxGeneration);
+        return new SegmentBuilder(segment, pipeWriter, initialOffset);
 
-        return new SegmentBuilder(segment, pipeWriter, segmentWriter.BytesWritten);
-    }
+        long WriteSegmentHeader()
+        {
+			var segmentWriter = new SegmentWriter(pipeWriter);
+			segmentWriter.WriteSegmentHeader(segment.MinGeneration, segment.MaxGeneration);
+            return segmentWriter.BytesWritten;
+		}
+	}
 
     public ValueTask CompleteAsync()
     {
