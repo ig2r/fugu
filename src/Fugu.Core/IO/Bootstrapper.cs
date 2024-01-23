@@ -1,4 +1,5 @@
 ﻿using Fugu.Channels;
+using Fugu.Utils;
 using System.Threading.Channels;
 
 namespace Fugu.IO;
@@ -27,10 +28,17 @@ public static class Bootstrapper
         // For all change sets across all segments in order, feed these change sets to index actor
         foreach (var parser in segmentParsers)
         {
-            await foreach (var changeSet in parser.ReadChangeSetsAsync())
+            await foreach (var changes in parser.ReadChangeSetsAsync())
             {
-                totalBytes += changeSet.Payloads.Sum(p => p.Key.Length + p.Value.Length) + changeSet.Tombstones.Sum(t => t.Length);
-                await changesWrittenChannel.Writer.WriteAsync(changeSet);
+                totalBytes += changes.Payloads.Sum(p => p.Key.Length + p.Value.Length) + changes.Tombstones.Sum(t => t.Length);
+
+                var changesWritten = new ChangesWritten(
+                    new VectorClock(0, 0),
+                    parser.Segment,
+                    changes.Payloads,
+                    changes.Tombstones.ToHashSet());
+
+                await changesWrittenChannel.Writer.WriteAsync(changesWritten);
             }
         }
 

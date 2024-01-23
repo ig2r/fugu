@@ -94,19 +94,18 @@ public sealed class CompactionActor
                     // TODO: Be smart about this, for now we always choose the first two segments as compaction inputs.
 
                     var sourceStats = message.Stats.Take(2).ToArray();
-                    var minGeneration = sourceStats.First().Key.MinGeneration;
-                    var maxGeneration = sourceStats.Last().Key.MaxGeneration;
 
                     var compactedClock = message.Clock with
                     {
                         Compaction = message.Clock.Compaction + 1,
                     };
 
-                    // Prepare compaction segment
+                    // Run actual compaction
                     var outputSlab = await _storage.CreateSlabAsync();
-                    var outputSegment = new Segment(minGeneration, maxGeneration, outputSlab);
-
-                    CompactSegments(outputSlab, minGeneration, maxGeneration, sourceStats.Select(kvp => kvp.Key).ToArray());
+                    var (compactedSegment, compactedChanges) = await CompactSegmentsAsync(
+                        outputSlab,
+                        sourceStats.Select(kvp => kvp.Key).ToArray(),
+                        message.Index);
 
                     // WriterActor will complete the "ChangesWritten" channel when the store shuts down,
                     // so we have to make sure it's still there before writing to it.
@@ -115,9 +114,9 @@ public sealed class CompactionActor
                         var succeeded = _changesWrittenChannel.Writer.TryWrite(
                             new ChangesWritten(
                                 Clock: compactedClock,
-                                Payloads: Array.Empty<KeyValuePair<byte[], SlabSubrange>>(),
-                                Tombstones: new HashSet<byte[]>(),
-                                OutputSegment: outputSegment
+                                Payloads: compactedChanges.Payloads,
+                                Tombstones: compactedChanges.Tombstones.ToHashSet(),
+                                OutputSegment: compactedSegment
                             ));
 
                         if (succeeded)
@@ -172,12 +171,74 @@ public sealed class CompactionActor
         }
     }
 
-    private void CompactSegments(IWritableSlab outputSlab, long minGeneration, long maxGeneration, Segment[] segments)
+    private static async ValueTask<(Segment Segment, ChangeSetCoordinates Changes)> CompactSegmentsAsync(
+        IWritableSlab outputSlab,
+        Segment[] sourceSegments,
+        IReadOnlyDictionary<byte[], IndexEntry> index)
     {
-        var pipeWriter = PipeWriter.Create(outputSlab.Output);
-        var segmentWriter = new SegmentWriter(pipeWriter);
+        var minGeneration = sourceSegments.Min(s => s.MinGeneration);
+        var maxGeneration = sourceSegments.Max(s => s.MaxGeneration);
+        var segmentBuilder = await SegmentBuilder.CreateAsync(outputSlab, minGeneration, maxGeneration);
 
-        // Header
-        segmentWriter.WriteSegmentHeader(minGeneration, maxGeneration);
+        // Tracks payloads and tombstones we've already written to the output segment.
+        var compactedPayloads = new List<KeyValuePair<byte[], SlabSubrange>>();
+        var compactedTombstones = new HashSet<byte[]>(ByteArrayEqualityComparer.Shared);
+
+        foreach (var sourceSegment in sourceSegments)
+        {
+            var parser = await SegmentParser.CreateAsync(sourceSegment.Slab);
+
+            // For now, we'll create one change set per source segment. Using the ChangeSet
+            // type means we hold the source payload values in memory, though -- in the future,
+            // better to track just the payload coordinates, then read/write from source to
+            // output using vectored I/O when done?
+            var toWrite = new ChangeSet();
+
+            await foreach (var changeSet in parser.ReadChangeSetsAsync())
+            {
+                foreach (var payload in changeSet.Payloads)
+                {
+                    if (index.TryGetValue(payload.Key, out var indexEntry) &&
+                        sourceSegment == indexEntry.Segment &&
+                        payload.Value.Offset == indexEntry.Subrange.Offset)
+                    {
+                        // TODO: Use pooled buffer, don't allocate a new buffer each time
+                        var buffer = new byte[payload.Value.Length];
+                        await sourceSegment.Slab.ReadAsync(buffer, payload.Value.Offset);
+                        toWrite.AddOrUpdate(payload.Key, buffer);
+                    }
+                }
+
+                foreach (var tombstone in changeSet.Tombstones)
+                {
+                    // TODO: Checking index isn't enough; also check Bloom filters of preceding segments
+                    // if any of those might contain a payload for that key. Skip if Bloom filters show
+                    // that no preceding segment has that key.
+                    // For now, we can only skip a tombstone if there's an active payload in the index
+                    // that supersedes it.
+                    if (!index.ContainsKey(tombstone) &&
+                        !compactedTombstones.Contains(tombstone))
+                    {
+                        toWrite.Remove(tombstone);
+                        compactedTombstones.Add(tombstone);
+                    }
+                }
+            }
+
+            if (toWrite.Payloads.Count > 0 || toWrite.Tombstones.Count > 0)
+            {
+                var coordinates = await segmentBuilder.WriteChangeSetAsync(toWrite);
+                compactedPayloads.AddRange(coordinates);
+            }
+        }
+
+        await segmentBuilder.CompleteAsync();
+
+        // Act like we wrote one big change set. Caller doesn't care.
+        var changes = new ChangeSetCoordinates(
+            compactedPayloads,
+            compactedTombstones.ToArray());
+
+        return (segmentBuilder.Segment, changes);
     }
 }

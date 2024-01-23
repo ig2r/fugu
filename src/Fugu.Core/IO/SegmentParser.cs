@@ -39,7 +39,7 @@ public sealed class SegmentParser
 		}
 	}
 
-	public async IAsyncEnumerable<ChangesWritten> ReadChangeSetsAsync()
+	public async IAsyncEnumerable<ChangeSetCoordinates> ReadChangeSetsAsync()
 	{
 		var pipeReader = await GetPipeReaderPastHeaderAsync();
 		long offset = StorageFormat.SegmentHeaderSize;
@@ -86,11 +86,7 @@ public sealed class SegmentParser
 					parseContext.PayloadValues,
 					(k, v) => new KeyValuePair<byte[], SlabSubrange>(k, v)).ToArray();
 
-				yield return new ChangesWritten(
-					new VectorClock(0, 0),
-					Segment,
-					payloads,
-					parseContext.Tombstones.ToImmutableHashSet());
+				yield return new ChangeSetCoordinates(payloads, parseContext.Tombstones);
 			}
 			else
 			{

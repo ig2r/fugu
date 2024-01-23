@@ -31,6 +31,11 @@ public sealed partial class IndexActor
             var message = await _changesWrittenChannel.Reader.ReadAsync();
             var indexBuilder = _index.ToBuilder();
 
+            // TODO: Figure out how to treat messages that happen due to compactions:
+            // - Ensure updates don't clobber the index by replacing newer payloads.
+            // - Ensure updates reflect properly in segment stats, i.e., stats for compacted source range
+            //   get removed and replaced by stats for compacted output segment instead.
+
             // Process incoming payloads
             foreach (var payload in message.Payloads)
             {
