@@ -76,7 +76,7 @@ graph TD;
 
     Index -- SegmentStatsUpdated --> Compaction;
     Snapshots -- OldestObservableSnapshotChanged --> Compaction;
-    Compaction -- ChangesWritten --> Index;
+    Compaction -- CompactionWritten --> Index;
     Compaction -- SegmentsCompacted --> Allocation;
 ```
 

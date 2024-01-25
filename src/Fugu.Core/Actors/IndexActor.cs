@@ -8,6 +8,7 @@ namespace Fugu.Actors;
 public sealed partial class IndexActor
 {
     private readonly Channel<ChangesWritten> _changesWrittenChannel;
+    private readonly Channel<CompactionWritten> _compactionWrittenChannel;
     private readonly Channel<IndexUpdated> _indexUpdatedChannel;
     private readonly Channel<SegmentStatsUpdated> _segmentStatsUpdatedChannel;
 
@@ -16,10 +17,12 @@ public sealed partial class IndexActor
 
     public IndexActor(
         Channel<ChangesWritten> changesWrittenChannel,
+        Channel<CompactionWritten> compactionWrittenChannel,
         Channel<IndexUpdated> indexUpdatedChannel,
         Channel<SegmentStatsUpdated> segmentStatsUpdatedChannel)
     {
         _changesWrittenChannel = changesWrittenChannel;
+        _compactionWrittenChannel = compactionWrittenChannel;
         _indexUpdatedChannel = indexUpdatedChannel;
         _segmentStatsUpdatedChannel = segmentStatsUpdatedChannel;
     }

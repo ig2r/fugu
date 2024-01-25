@@ -1,7 +1,6 @@
 ﻿using Fugu.Channels;
 using Fugu.IO;
 using Fugu.Utils;
-using System.IO.Pipelines;
 using System.Threading.Channels;
 
 namespace Fugu.Actors;
@@ -13,7 +12,7 @@ public sealed class CompactionActor
     private readonly IBackingStorage _storage;
     private readonly Channel<SegmentStatsUpdated> _segmentStatsUpdatedChannel;
     private readonly Channel<OldestObservableSnapshotChanged> _oldestObservableSnapshotChangedChannel;
-    private readonly Channel<ChangesWritten> _changesWrittenChannel;
+    private readonly Channel<CompactionWritten> _compactionWrittenChannel;
     private readonly Channel<SegmentsCompacted> _segmentsCompactedChannel;
 
     private readonly PriorityQueue<Segment, VectorClock> _segmentsAwaitingRemoval = new(
@@ -31,13 +30,13 @@ public sealed class CompactionActor
         IBackingStorage storage,
         Channel<SegmentStatsUpdated> segmentStatsUpdatedChannel,
         Channel<OldestObservableSnapshotChanged> oldestObservableSnapshotChangedChannel,
-        Channel<ChangesWritten> changesWrittenChannel,
+        Channel<CompactionWritten> compactionWrittenChannel,
         Channel<SegmentsCompacted> segmentsCompactedChannel)
     {
         _storage = storage;
         _segmentStatsUpdatedChannel = segmentStatsUpdatedChannel;
         _oldestObservableSnapshotChangedChannel = oldestObservableSnapshotChangedChannel;
-        _changesWrittenChannel = changesWrittenChannel;
+        _compactionWrittenChannel = compactionWrittenChannel;
         _segmentsCompactedChannel = segmentsCompactedChannel;
     }
 
@@ -107,23 +106,11 @@ public sealed class CompactionActor
                         sourceStats.Select(kvp => kvp.Key).ToArray(),
                         message.Index);
 
-                    // WriterActor will complete the "ChangesWritten" channel when the store shuts down,
-                    // so we have to make sure it's still there before writing to it.
-                    while (await _changesWrittenChannel.Writer.WaitToWriteAsync())
-                    {
-                        var succeeded = _changesWrittenChannel.Writer.TryWrite(
-                            new ChangesWritten(
-                                Clock: compactedClock,
-                                Payloads: compactedChanges.Payloads,
-                                Tombstones: compactedChanges.Tombstones.ToHashSet(),
-                                OutputSegment: compactedSegment
-                            ));
-
-                        if (succeeded)
-                        {
-                            break;
-                        }
-                    }
+                    await _compactionWrittenChannel.Writer.WriteAsync(
+                        new CompactionWritten(
+                            Clock: compactedClock,
+                            OutputSegment: compactedSegment,
+                            Changes: compactedChanges));
 
                     // Cannot delete the source segments right away because there might be active snapshots
                     // that reference it. Instead, add them to a list and delete them when SnapshotsActor signals

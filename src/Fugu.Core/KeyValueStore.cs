@@ -42,7 +42,14 @@ public sealed class KeyValueStore : IAsyncDisposable
         var changesWrittenChannel = Channel.CreateUnbounded<ChangesWritten>(new UnboundedChannelOptions
         {
             AllowSynchronousContinuations = true,
-            SingleWriter = false,
+            SingleWriter = true,
+            SingleReader = true,
+        });
+
+        var compactionWrittenChannel = Channel.CreateUnbounded<CompactionWritten>(new UnboundedChannelOptions
+        {
+            AllowSynchronousContinuations = false,
+            SingleWriter = true,
             SingleReader = true,
         });
 
@@ -77,7 +84,7 @@ public sealed class KeyValueStore : IAsyncDisposable
         });
 
         // Create actors involved in bootstrapping
-        var indexActor = new IndexActor(changesWrittenChannel, indexUpdatedChannel, segmentStatsUpdatedChannel);
+        var indexActor = new IndexActor(changesWrittenChannel, compactionWrittenChannel, indexUpdatedChannel, segmentStatsUpdatedChannel);
         var snapshotsActor = new SnapshotsActor(indexUpdatedChannel, oldestObservableSnapshotChangedChannel);
 
         // Load existing data
@@ -90,7 +97,7 @@ public sealed class KeyValueStore : IAsyncDisposable
             storage,
             segmentStatsUpdatedChannel,
             oldestObservableSnapshotChangedChannel,
-            changesWrittenChannel,
+            compactionWrittenChannel,
             segmentsCompactedChannel);
 
         var store = new KeyValueStore(
