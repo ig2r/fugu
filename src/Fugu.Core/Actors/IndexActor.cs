@@ -39,6 +39,12 @@ public sealed partial class IndexActor
             // Process incoming payloads
             foreach (var payload in message.Payloads)
             {
+                // TODO: If this is from a compaction, there should be an existing payload entry with that compaction
+                // generation range in the index. Only add this compacted payload to the index if this is the case!
+                // Otherwise (i.e., there's a payload in the index but it's more recent than the compaction; OR there
+                // is no payload in the index, indicating it has been deleted concurrently), discard the incoming
+                // payload right away.
+
                 // If this payload replaces an existing payload with the same key, mark the previous payload as stale
                 if (indexBuilder.TryGetValue(payload.Key, out var previousIndexEntry))
                 {
@@ -52,6 +58,9 @@ public sealed partial class IndexActor
             // Process incoming tombstones. Tombstones will only ever increase the amount of "stale" bytes in the store.
             foreach (var tombstone in message.Tombstones)
             {
+                // TODO: If this is from a compaction, NEVER change the index (= never displace any payload item from
+                // the index). Only track the tombstone as "dead weight" for the compacted segment.
+
                 if (indexBuilder.TryGetValue(tombstone, out var previousIndexEntry))
                 {
                     _statsTracker.OnIndexEntryDisplaced(tombstone, previousIndexEntry);
