@@ -51,9 +51,18 @@ public sealed class CompactionActor
 
     private async Task ProcessSegmentStatsUpdatedMessagesAsync()
     {
+        var compactionThresholdClock = new VectorClock();
+
         while (await _segmentStatsUpdatedChannel.Reader.WaitToReadAsync())
         {
             var message = await _segmentStatsUpdatedChannel.Reader.ReadAsync();
+
+            // Discard messages while we're still waiting for the effects of a previous compaction to become observable
+            if (!(message.Clock >= compactionThresholdClock))
+            {
+                continue;
+            }
+
             await _semaphore.WaitAsync();
 
             try
@@ -94,7 +103,7 @@ public sealed class CompactionActor
 
                     var sourceStats = message.Stats.Take(2).ToArray();
 
-                    var compactedClock = message.Clock with
+                    compactionThresholdClock = message.Clock with
                     {
                         Compaction = message.Clock.Compaction + 1,
                     };
@@ -108,14 +117,14 @@ public sealed class CompactionActor
 
                     await _compactionWrittenChannel.Writer.WriteAsync(
                         new CompactionWritten(
-                            Clock: compactedClock,
+                            Clock: compactionThresholdClock,
                             OutputSegment: compactedSegment,
                             Changes: compactedChanges));
 
                     // Cannot delete the source segments right away because there might be active snapshots
                     // that reference it. Instead, add them to a list and delete them when SnapshotsActor signals
                     // that no states before the current compaction clock are observable in snapshots anymore.
-                    _segmentsAwaitingRemoval.EnqueueRange(sourceStats.Select(kvp => kvp.Key), compactedClock);
+                    _segmentsAwaitingRemoval.EnqueueRange(sourceStats.Select(kvp => kvp.Key), compactionThresholdClock);
 
                     // TODO: Tell allocation actor that the store's total capacity has decreased, so that it will
                     // account for it by making future segments smaller again.
@@ -132,6 +141,9 @@ public sealed class CompactionActor
                 _semaphore.Release();
             }
         }
+
+        // Propagate completion
+        _compactionWrittenChannel.Writer.Complete();
     }
 
     private async Task ProcessOldestObservableSnapshotChangedMessagesAsync()

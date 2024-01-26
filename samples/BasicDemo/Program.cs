@@ -2,7 +2,7 @@
 using Fugu.IO;
 using System.Text;
 
-const int Iterations = 100;
+const int Iterations = 1000;
 var storage = new InMemoryStorage();
 
 await using (var store = await KeyValueStore.CreateAsync(storage))
@@ -19,7 +19,10 @@ await using (var store = await KeyValueStore.CreateAsync(storage))
         };
 
         await store.SaveAsync(changeSet);
+        await Task.Delay(TimeSpan.FromMilliseconds(10));
     }
+
+    await Task.Delay(TimeSpan.FromSeconds(5));
 
     using (var snapshot = await store.GetSnapshotAsync())
     {

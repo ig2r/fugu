@@ -7,6 +7,8 @@ namespace Fugu.Actors;
 
 public sealed partial class IndexActor
 {
+    private readonly SemaphoreSlim _semaphore = new(1);
+
     private readonly Channel<ChangesWritten> _changesWrittenChannel;
     private readonly Channel<CompactionWritten> _compactionWrittenChannel;
     private readonly Channel<IndexUpdated> _indexUpdatedChannel;
@@ -29,71 +31,175 @@ public sealed partial class IndexActor
 
     public async Task RunAsync()
     {
+        await Task.WhenAll(
+            ProcessChangesWrittenMessagesAsync(),
+            ProcessCompactionWrittenMessagesAsync());
+    }
+
+    private async Task ProcessChangesWrittenMessagesAsync()
+    {
+        SegmentStatsBuilder? statsBuilder = null;
+
         while (await _changesWrittenChannel.Reader.WaitToReadAsync())
         {
             var message = await _changesWrittenChannel.Reader.ReadAsync();
-            var indexBuilder = _index.ToBuilder();
+            await _semaphore.WaitAsync();
 
-            // TODO: Figure out how to treat messages that happen due to compactions:
-            // - Ensure updates don't clobber the index by replacing newer payloads.
-            // - Ensure updates reflect properly in segment stats, i.e., stats for compacted source range
-            //   get removed and replaced by stats for compacted output segment instead.
-
-            // Process incoming payloads
-            foreach (var payload in message.Payloads)
+            try
             {
-                // TODO: If this is from a compaction, there should be an existing payload entry with that compaction
-                // generation range in the index. Only add this compacted payload to the index if this is the case!
-                // Otherwise (i.e., there's a payload in the index but it's more recent than the compaction; OR there
-                // is no payload in the index, indicating it has been deleted concurrently), discard the incoming
-                // payload right away.
-
-                // If this payload replaces an existing payload with the same key, mark the previous payload as stale
-                if (indexBuilder.TryGetValue(payload.Key, out var previousIndexEntry))
+                // Did the output segment change? Ensure we have a matching SegmentStatsBuilder set up.
+                if (message.OutputSegment != statsBuilder?.Segment)
                 {
-                    _statsTracker.OnIndexEntryDisplaced(payload.Key, previousIndexEntry);
+                    if (statsBuilder is not null)
+                    {
+                        _statsTracker.Add(statsBuilder);
+                    }
+
+                    statsBuilder = new SegmentStatsBuilder(message.OutputSegment);
                 }
 
-                indexBuilder[payload.Key] = new IndexEntry(message.OutputSegment, payload.Value);
-                _statsTracker.OnPayloadAdded(message.OutputSegment, payload);
-            }
-            
-            // Process incoming tombstones. Tombstones will only ever increase the amount of "stale" bytes in the store.
-            foreach (var tombstone in message.Tombstones)
-            {
-                // TODO: If this is from a compaction, NEVER change the index (= never displace any payload item from
-                // the index). Only track the tombstone as "dead weight" for the compacted segment.
+                var indexBuilder = _index.ToBuilder();
 
-                if (indexBuilder.TryGetValue(tombstone, out var previousIndexEntry))
+                // TODO: Figure out how to treat messages that happen due to compactions:
+                // - Ensure updates don't clobber the index by replacing newer payloads.
+                // - Ensure updates reflect properly in segment stats, i.e., stats for compacted source range
+                //   get removed and replaced by stats for compacted output segment instead.
+
+                // Process incoming payloads
+                foreach (var payload in message.Payloads)
                 {
-                    _statsTracker.OnIndexEntryDisplaced(tombstone, previousIndexEntry);
+                    // If this payload replaces an existing payload with the same key, mark the previous payload as stale
+                    if (indexBuilder.TryGetValue(payload.Key, out var previousIndexEntry))
+                    {
+                        if (previousIndexEntry.Segment == statsBuilder.Segment)
+                        {
+                            // Mark entry as stale in current stats builder
+                            statsBuilder.OnPayloadDisplaced(KeyValuePair.Create(payload.Key, previousIndexEntry.Subrange));
+                        }
+                        else
+                        {
+                            // Mark entry as stale in stats tracker
+                            _statsTracker.OnIndexEntryDisplaced(payload.Key, previousIndexEntry);
+                        }
+                    }
+
+                    indexBuilder[payload.Key] = new IndexEntry(message.OutputSegment, payload.Value);
+                    statsBuilder.OnPayloadAdded(payload);
                 }
 
-                indexBuilder.Remove(tombstone);
-                _statsTracker.OnTombstoneAdded(message.OutputSegment, tombstone);
-            }
+                // Process incoming tombstones. Tombstones will only ever increase the amount of "stale" bytes in the store.
+                foreach (var tombstone in message.Tombstones)
+                {
+                    if (indexBuilder.TryGetValue(tombstone, out var previousIndexEntry))
+                    {
+                        if (previousIndexEntry.Segment == statsBuilder.Segment)
+                        {
+                            statsBuilder.OnPayloadDisplaced(KeyValuePair.Create(tombstone, previousIndexEntry.Subrange));
+                        }
+                        else
+                        {
+                            _statsTracker.OnIndexEntryDisplaced(tombstone, previousIndexEntry);
+                        }
+                    }
 
-            _index = indexBuilder.ToImmutable();
+                    indexBuilder.Remove(tombstone);
+                    statsBuilder.OnTombstoneAdded(tombstone);
+                }
 
-            await _indexUpdatedChannel.Writer.WriteAsync(
-                new IndexUpdated(
-                    Clock: message.Clock,
-                    Index: _index));
+                _index = indexBuilder.ToImmutable();
 
-            var stats = _statsTracker.ToImmutable();
-
-            if (!stats.IsEmpty)
-            {
-                await _segmentStatsUpdatedChannel.Writer.WriteAsync(
-                    new SegmentStatsUpdated(
+                await _indexUpdatedChannel.Writer.WriteAsync(
+                    new IndexUpdated(
                         Clock: message.Clock,
-                        Stats: stats,
                         Index: _index));
+
+                var stats = _statsTracker.ToImmutable();
+
+                if (!stats.IsEmpty)
+                {
+                    await _segmentStatsUpdatedChannel.Writer.WriteAsync(
+                        new SegmentStatsUpdated(
+                            Clock: message.Clock,
+                            Stats: stats,
+                            Index: _index));
+                }
+            }
+            finally
+            {
+                _semaphore.Release();
             }
         }
 
         // Propagate completion
         _indexUpdatedChannel.Writer.Complete();
         _segmentStatsUpdatedChannel.Writer.Complete();
+    }
+
+    private async Task ProcessCompactionWrittenMessagesAsync()
+    {
+        while (await _compactionWrittenChannel.Reader.WaitToReadAsync())
+        {
+            var message = await _compactionWrittenChannel.Reader.ReadAsync();
+            await _semaphore.WaitAsync();
+
+            try
+            {
+                var statsBuilder = new SegmentStatsBuilder(message.OutputSegment);
+                var indexBuilder = _index.ToBuilder();
+
+                // For every payload:
+                // - If the incoming payload replaces another payload within the source generation range(!)
+                //   in the index, then: update the index, track payload bytes as "live" in compacted segment.
+                //   In theory, we could additionally mark the previous payload as "displaced". But since that
+                //   source segment is going away from the tracker very soon anyways, why bother.
+                // - Else, track payload bytes as "stale" in compacted segment.
+
+                foreach (var payload in message.Changes.Payloads)
+                {
+                    statsBuilder.OnPayloadAdded(payload);
+
+                    if (indexBuilder.TryGetValue(payload.Key, out var indexEntry) &&
+                        indexEntry.Segment.MaxGeneration <= message.OutputSegment.MaxGeneration)
+                    {
+                        indexBuilder[payload.Key] = new IndexEntry(message.OutputSegment, payload.Value);
+                    }
+                    else
+                    {
+                        statsBuilder.OnPayloadDisplaced(payload);
+                    }
+                }
+
+                // For every tombstone:
+                // - NEVER modify the index. Always track the tombstone bytes as "stale" right away.
+
+                foreach (var tombstone in message.Changes.Tombstones)
+                {
+                    statsBuilder.OnTombstoneAdded(tombstone);
+                }
+
+                _statsTracker.Add(statsBuilder);
+                _index = indexBuilder.ToImmutable();
+
+                await _indexUpdatedChannel.Writer.WriteAsync(
+                    new IndexUpdated(
+                        Clock: message.Clock,
+                        Index: _index));
+
+                var stats = _statsTracker.ToImmutable();
+
+                if (!stats.IsEmpty)
+                {
+                    await _segmentStatsUpdatedChannel.Writer.WriteAsync(
+                        new SegmentStatsUpdated(
+                            Clock: message.Clock,
+                            Stats: stats,
+                            Index: _index));
+                }
+            }
+            finally
+            {
+                _semaphore.Release();
+            }
+        }
     }
 }
