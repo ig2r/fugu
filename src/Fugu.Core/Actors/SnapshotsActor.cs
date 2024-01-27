@@ -52,10 +52,14 @@ public sealed class SnapshotsActor : ISnapshotOwner
 
             try
             {
+                var compactionClockStepped = message.Clock.Compaction > _clock.Compaction;
+
                 _clock = VectorClock.Max(_clock, message.Clock);
                 _index = message.Index;
 
-                // Release any waiters
+                // Release any waiters that have been stalled until this message's clock value
+                // becomes observable, indicating that the changes have been written and the
+                // index has been updated.
                 while (_pendingWaiters.TryPeek(out _, out var topItemClock))
                 {
                     if (_clock >= topItemClock)
@@ -67,6 +71,15 @@ public sealed class SnapshotsActor : ISnapshotOwner
                     {
                         break;
                     }
+                }
+
+                // If there are no active snapshots and compaction clock component has stepped,
+                // tell compaction actor that nothing before the current message's clock can be
+                // observed anymore.
+                if (compactionClockStepped && _activeSnapshotsByClock.Count == 0)
+                {
+                    await _oldestObservableSnapshotChangedChannel.Writer.WriteAsync(
+                        new OldestObservableSnapshotChanged(_clock));
                 }
             }
             finally

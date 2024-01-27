@@ -14,6 +14,7 @@ public sealed partial class IndexActor
     private readonly Channel<IndexUpdated> _indexUpdatedChannel;
     private readonly Channel<SegmentStatsUpdated> _segmentStatsUpdatedChannel;
 
+    private VectorClock _clock = default;
     private ImmutableDictionary<byte[], IndexEntry> _index = ImmutableDictionary.Create<byte[], IndexEntry>(ByteArrayEqualityComparer.Shared);
     private readonly SegmentStatsTracker _statsTracker = new();
 
@@ -38,7 +39,7 @@ public sealed partial class IndexActor
 
     private async Task ProcessChangesWrittenMessagesAsync()
     {
-        SegmentStatsBuilder? statsBuilder = null;
+        SegmentStatsBuilder? currentOutputSegmentStatsBuilder = null;
 
         while (await _changesWrittenChannel.Reader.WaitToReadAsync())
         {
@@ -47,15 +48,17 @@ public sealed partial class IndexActor
 
             try
             {
+                _clock = VectorClock.Max(_clock, message.Clock);
+
                 // Did the output segment change? Ensure we have a matching SegmentStatsBuilder set up.
-                if (message.OutputSegment != statsBuilder?.Segment)
+                if (message.OutputSegment != currentOutputSegmentStatsBuilder?.Segment)
                 {
-                    if (statsBuilder is not null)
+                    if (currentOutputSegmentStatsBuilder is not null)
                     {
-                        _statsTracker.Add(statsBuilder);
+                        _statsTracker.Add(currentOutputSegmentStatsBuilder);
                     }
 
-                    statsBuilder = new SegmentStatsBuilder(message.OutputSegment);
+                    currentOutputSegmentStatsBuilder = new SegmentStatsBuilder(message.OutputSegment);
                 }
 
                 var indexBuilder = _index.ToBuilder();
@@ -71,10 +74,10 @@ public sealed partial class IndexActor
                     // If this payload replaces an existing payload with the same key, mark the previous payload as stale
                     if (indexBuilder.TryGetValue(payload.Key, out var previousIndexEntry))
                     {
-                        if (previousIndexEntry.Segment == statsBuilder.Segment)
+                        if (previousIndexEntry.Segment == currentOutputSegmentStatsBuilder.Segment)
                         {
                             // Mark entry as stale in current stats builder
-                            statsBuilder.OnPayloadDisplaced(KeyValuePair.Create(payload.Key, previousIndexEntry.Subrange));
+                            currentOutputSegmentStatsBuilder.OnPayloadDisplaced(KeyValuePair.Create(payload.Key, previousIndexEntry.Subrange));
                         }
                         else
                         {
@@ -84,7 +87,7 @@ public sealed partial class IndexActor
                     }
 
                     indexBuilder[payload.Key] = new IndexEntry(message.OutputSegment, payload.Value);
-                    statsBuilder.OnPayloadAdded(payload);
+                    currentOutputSegmentStatsBuilder.OnPayloadAdded(payload);
                 }
 
                 // Process incoming tombstones. Tombstones will only ever increase the amount of "stale" bytes in the store.
@@ -92,9 +95,9 @@ public sealed partial class IndexActor
                 {
                     if (indexBuilder.TryGetValue(tombstone, out var previousIndexEntry))
                     {
-                        if (previousIndexEntry.Segment == statsBuilder.Segment)
+                        if (previousIndexEntry.Segment == currentOutputSegmentStatsBuilder.Segment)
                         {
-                            statsBuilder.OnPayloadDisplaced(KeyValuePair.Create(tombstone, previousIndexEntry.Subrange));
+                            currentOutputSegmentStatsBuilder.OnPayloadDisplaced(KeyValuePair.Create(tombstone, previousIndexEntry.Subrange));
                         }
                         else
                         {
@@ -103,14 +106,14 @@ public sealed partial class IndexActor
                     }
 
                     indexBuilder.Remove(tombstone);
-                    statsBuilder.OnTombstoneAdded(tombstone);
+                    currentOutputSegmentStatsBuilder.OnTombstoneAdded(tombstone);
                 }
 
                 _index = indexBuilder.ToImmutable();
 
                 await _indexUpdatedChannel.Writer.WriteAsync(
                     new IndexUpdated(
-                        Clock: message.Clock,
+                        Clock: _clock,
                         Index: _index));
 
                 var stats = _statsTracker.ToImmutable();
@@ -119,7 +122,7 @@ public sealed partial class IndexActor
                 {
                     await _segmentStatsUpdatedChannel.Writer.WriteAsync(
                         new SegmentStatsUpdated(
-                            Clock: message.Clock,
+                            Clock: _clock,
                             Stats: stats,
                             Index: _index));
                 }
@@ -144,6 +147,8 @@ public sealed partial class IndexActor
 
             try
             {
+                _clock = VectorClock.Max(_clock, message.Clock);
+
                 var statsBuilder = new SegmentStatsBuilder(message.OutputSegment);
                 var indexBuilder = _index.ToBuilder();
 
@@ -182,7 +187,7 @@ public sealed partial class IndexActor
 
                 await _indexUpdatedChannel.Writer.WriteAsync(
                     new IndexUpdated(
-                        Clock: message.Clock,
+                        Clock: _clock,
                         Index: _index));
 
                 var stats = _statsTracker.ToImmutable();
@@ -191,7 +196,7 @@ public sealed partial class IndexActor
                 {
                     await _segmentStatsUpdatedChannel.Writer.WriteAsync(
                         new SegmentStatsUpdated(
-                            Clock: message.Clock,
+                            Clock: _clock,
                             Stats: stats,
                             Index: _index));
                 }

@@ -47,7 +47,19 @@ public sealed class SegmentStatsTracker
             .TakeWhile(s => s.MaxGeneration <= builder.Segment.MaxGeneration)
             .ToArray();
 
-        _statsBuilder.RemoveRange(replaced);
+        if (replaced.Length > 0)
+        {
+            // Verify the before/after re. live bytes are equal
+            var liveBytesBeforeCompaction = replaced.Sum(s => _statsBuilder[s].LiveBytes);
+            var liveBytesAfterCompaction = builder.Stats.LiveBytes;
+
+            if (liveBytesBeforeCompaction != liveBytesAfterCompaction)
+            {
+                throw new InvalidOperationException();
+            }
+
+            _statsBuilder.RemoveRange(replaced);
+        }
 
         _statsBuilder[builder.Segment] = builder.Stats;
     }

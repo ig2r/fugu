@@ -51,14 +51,14 @@ public sealed class CompactionActor
 
     private async Task ProcessSegmentStatsUpdatedMessagesAsync()
     {
-        var compactionThresholdClock = new VectorClock();
+        long compactionClockThreshold = 0;
 
         while (await _segmentStatsUpdatedChannel.Reader.WaitToReadAsync())
         {
             var message = await _segmentStatsUpdatedChannel.Reader.ReadAsync();
 
             // Discard messages while we're still waiting for the effects of a previous compaction to become observable
-            if (!(message.Clock >= compactionThresholdClock))
+            if (message.Clock.Compaction < compactionClockThreshold)
             {
                 continue;
             }
@@ -103,10 +103,7 @@ public sealed class CompactionActor
 
                     var sourceStats = message.Stats.Take(2).ToArray();
 
-                    compactionThresholdClock = message.Clock with
-                    {
-                        Compaction = message.Clock.Compaction + 1,
-                    };
+                    compactionClockThreshold++;
 
                     // Run actual compaction
                     var outputSlab = await _storage.CreateSlabAsync();
@@ -117,14 +114,16 @@ public sealed class CompactionActor
 
                     await _compactionWrittenChannel.Writer.WriteAsync(
                         new CompactionWritten(
-                            Clock: compactionThresholdClock,
+                            Clock: message.Clock with { Compaction = compactionClockThreshold },
                             OutputSegment: compactedSegment,
                             Changes: compactedChanges));
 
                     // Cannot delete the source segments right away because there might be active snapshots
                     // that reference it. Instead, add them to a list and delete them when SnapshotsActor signals
                     // that no states before the current compaction clock are observable in snapshots anymore.
-                    _segmentsAwaitingRemoval.EnqueueRange(sourceStats.Select(kvp => kvp.Key), compactionThresholdClock);
+                    _segmentsAwaitingRemoval.EnqueueRange(
+                        sourceStats.Select(kvp => kvp.Key),
+                        message.Clock with { Compaction = compactionClockThreshold });
 
                     // TODO: Tell allocation actor that the store's total capacity has decreased, so that it will
                     // account for it by making future segments smaller again.
@@ -218,8 +217,15 @@ public sealed class CompactionActor
                     if (!index.ContainsKey(tombstone) &&
                         !compactedTombstones.Contains(tombstone))
                     {
-                        toWrite.Remove(tombstone);
-                        compactedTombstones.Add(tombstone);
+                        // Special case: if the compacted range starts at the very beginning, no need to
+                        // bring along tombstones.
+                        // TODO: Once we scan previous segments' Bloom filters for this key, this special
+                        // case will go away organically.
+                        if (minGeneration > 1)
+                        {
+                            toWrite.Remove(tombstone);
+                            compactedTombstones.Add(tombstone);
+                        }
                     }
                 }
             }
