@@ -6,4 +6,9 @@ internal static class ChangeSetUtils
     {
         return changeSet.Payloads.Sum(p => p.Key.Length + p.Value.Length) + changeSet.Tombstones.Sum(t => t.Length);
     }
+
+    public static long GetDataBytes(ChangeSetCoordinates changeSet)
+    {
+        return changeSet.Payloads.Sum(p => p.Key.Length + p.Value.Length) + changeSet.Tombstones.Sum(t => t.Length);
+    }
 }

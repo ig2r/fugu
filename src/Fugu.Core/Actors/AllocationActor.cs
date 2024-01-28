@@ -45,8 +45,12 @@ public sealed class AllocationActor
 
             try
             {
-                _clock = VectorClock.Max(_clock, message.Clock);
                 _totalBytes += message.CapacityChange;
+
+                // Readjust the output size limit for the current output right away, instead of letting
+                // it complete and then sizing the following segment only. This can mean that the current
+                // output segment is "cut short", because it is now suddenly over limit.
+                _outputSlabSizeLimit = GetOutputSizeLimit(_totalBytes);
             }
             finally
             {
@@ -92,16 +96,7 @@ public sealed class AllocationActor
             if (_outputSlab is null)
             {
                 _outputSlab = await _storage.CreateSlabAsync();
-
-                // Determine the size limit for the new output slab based on a geometric series, which is characterized by
-                // two parameters a and r:
-                const double a = 100;       // Coefficient, also the size of slab #0
-                const double r = 1.5;       // Common ratio, indicates by how much each added slab should be bigger than the last
-
-                // Set the size limit for our new slab to the nth element of the geometric series. Derived from closed-form
-                // formula for cumulative sum of (a, r) geometric series: S = a * (1 - r^n) / (1 - r)
-                // ...solved for a * r^n.
-                _outputSlabSizeLimit = (long)(a + _totalBytes * (r - 1));
+                _outputSlabSizeLimit = GetOutputSizeLimit(_totalBytes);
              }
 
             _outputSlabBytesWritten += ChangeSetUtils.GetDataBytes(changeSet);
@@ -118,5 +113,18 @@ public sealed class AllocationActor
         {
             _semaphore.Release();
         }
+    }
+
+    private static long GetOutputSizeLimit(long totalBytes)
+    {
+        // Determine the size limit for the new output slab based on a geometric series, which is characterized by
+        // two parameters a and r:
+        const double a = 100;       // Coefficient, also the size of slab #0
+        const double r = 1.5;       // Common ratio, indicates by how much each added slab should be bigger than the last
+
+        // Set the size limit for our new slab to the nth element of the geometric series. Derived from closed-form
+        // formula for cumulative sum of (a, r) geometric series: S = a * (1 - r^n) / (1 - r)
+        // ...solved for a * r^n.
+        return (long)(a + totalBytes * (r - 1));
     }
 }

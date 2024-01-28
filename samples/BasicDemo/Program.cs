@@ -3,6 +3,8 @@ using Fugu.IO;
 using System.Text;
 
 const int Iterations = 10000;
+const int KeyspaceSize = 200;
+
 var storage = new InMemoryStorage();
 
 await using (var store = await KeyValueStore.CreateAsync(storage))
@@ -11,8 +13,8 @@ await using (var store = await KeyValueStore.CreateAsync(storage))
 
     for (var i = 0; i < Iterations; i++)
     {
-        var payloadNo = random.Next(50);
-        var tombstoneNo = random.Next(50);
+        var payloadNo = random.Next(KeyspaceSize);
+        var tombstoneNo = random.Next(KeyspaceSize);
 
         var key = Encoding.UTF8.GetBytes($"key:{payloadNo}");
         var changeSet = new ChangeSet
@@ -30,14 +32,15 @@ await using (var store = await KeyValueStore.CreateAsync(storage))
         //await Task.Delay(TimeSpan.FromMilliseconds(1));
     }
 
-    Console.WriteLine("Writing completed");
-    await Task.Delay(TimeSpan.FromSeconds(5));
+    Console.WriteLine("Writing completed, pausing for 1 second");
+    await Task.Delay(TimeSpan.FromSeconds(1));
 
     using (var snapshot = await store.GetSnapshotAsync())
     {
         foreach (var key in snapshot.Keys)
         {
-            Console.WriteLine($"Key: {Encoding.UTF8.GetString(key.ToArray())}");
+            var value = await snapshot.ReadAsync(key.ToArray());
+            Console.WriteLine($"Key: {Encoding.UTF8.GetString(key.ToArray())} - {Encoding.UTF8.GetString(value.Span)}");
         }
     }
 }

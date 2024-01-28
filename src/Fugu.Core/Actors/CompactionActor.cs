@@ -125,14 +125,17 @@ public sealed class CompactionActor
                         sourceStats.Select(kvp => kvp.Key),
                         message.Clock with { Compaction = compactionClockThreshold });
 
+                    // Determine by how much the store's total capacity changes with this compaction.
+                    var oldCapacity = sourceStats.Sum(s => s.Value.TotalBytes);
+                    var newCapacity = ChangeSetUtils.GetDataBytes(compactedChanges);
+                    var capacityChange = newCapacity - oldCapacity;
+
                     // TODO: Tell allocation actor that the store's total capacity has decreased, so that it will
                     // account for it by making future segments smaller again.
                     // Note that we can either do this here, OR when the old segments actually get evicted because
                     // no snapshots reference them anymore.
-                    //await _segmentsCompactedChannel.Writer.WriteAsync(
-                    //    new SegmentsCompacted(
-                    //        Clock: compactedClock,
-                    //        CapacityChange: 0));
+                    await _segmentsCompactedChannel.Writer.WriteAsync(
+                        new SegmentsCompacted(CapacityChange: capacityChange));
                 }
             }
             finally
@@ -156,10 +159,9 @@ public sealed class CompactionActor
             {
                 while (_segmentsAwaitingRemoval.TryPeek(out var _, out var compactedAt) && message.Clock.Compaction >= compactedAt.Compaction)
                 {
+                    // Remove this segment, it can no longer be referenced in snapshots
                     var segment = _segmentsAwaitingRemoval.Dequeue();
-
-                    // TODO: Ask backing storage to remove it
-                    //await _storage.RemoveSlabAsync(segment.Slab);
+                    await _storage.RemoveSlabAsync(segment.Slab);
                 }
             }
             finally
