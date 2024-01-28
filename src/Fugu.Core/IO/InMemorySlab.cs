@@ -40,6 +40,11 @@ public class InMemorySlab : IWritableSlab, ISlab
 
         try
         {
+            if (offset > _arrayBufferWriter.WrittenCount)
+            {
+                throw new InvalidOperationException("Attempted to read from offset past the end of the slab.");
+            }
+
             var availableBytes = Math.Min(buffer.Length, _arrayBufferWriter.WrittenCount - (int)offset);
             var slice = _arrayBufferWriter.WrittenSpan.Slice((int)offset, availableBytes);
             slice.CopyTo(buffer.Span);

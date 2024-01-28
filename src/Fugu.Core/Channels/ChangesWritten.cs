@@ -3,8 +3,8 @@
 namespace Fugu.Channels;
 
 /// <summary>
-/// Emitted by <see cref="Actors.WriterActor"/> when a change set has been written to its assigned
-/// output segment.
+/// Emitted by <see cref="Actors.WriterActor"/> or <see cref="Actors.CompactionActor"/> when a change set
+/// or a compacted segment has been written to its associated output segment.
 /// </summary>
 /// <param name="Clock">Logical clock value.</param>
 /// <param name="OutputSegment">Output segment.</param>

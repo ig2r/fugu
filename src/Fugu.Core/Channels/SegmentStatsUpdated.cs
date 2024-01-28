@@ -8,7 +8,9 @@ namespace Fugu.Channels;
 /// </summary>
 /// <param name="Clock">Logical clock value.</param>
 /// <param name="Stats">Usage stats for all segments part of the index.</param>
+/// <param name="Index">State of the index at the given clock value.</param>
 public readonly record struct SegmentStatsUpdated(
     VectorClock Clock,
-    IReadOnlyDictionary<Segment, SegmentStats> Stats
+    IReadOnlyDictionary<Segment, SegmentStats> Stats,
+    IReadOnlyDictionary<byte[], IndexEntry> Index
 );

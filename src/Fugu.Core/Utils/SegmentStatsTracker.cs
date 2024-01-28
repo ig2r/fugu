@@ -5,8 +5,6 @@ namespace Fugu.Utils;
 public sealed class SegmentStatsTracker
 {
     private readonly ImmutableSortedDictionary<Segment, SegmentStats>.Builder _statsBuilder;
-    private Segment? _outputSegment = null;
-    private SegmentStats _outputSegmentStats = new();
 
     public SegmentStatsTracker()
     {
@@ -32,61 +30,37 @@ public sealed class SegmentStatsTracker
     public void OnIndexEntryDisplaced(byte[] key, IndexEntry indexEntry)
     {
         var byteCount = key.Length + indexEntry.Subrange.Length;
+        var stats = _statsBuilder[indexEntry.Segment];
 
-        if (indexEntry.Segment == _outputSegment)
+        _statsBuilder[indexEntry.Segment] = stats with
         {
-            _outputSegmentStats = _outputSegmentStats with
-            {
-                StaleBytes = _outputSegmentStats.StaleBytes + byteCount,
-            };
-        }
-        else
-        {
-            var stats = _statsBuilder[indexEntry.Segment];
-
-            _statsBuilder[indexEntry.Segment] = stats with
-            {
-                StaleBytes = stats.StaleBytes + byteCount,
-            };
-        }
-    }
-
-    public void OnPayloadAdded(Segment segment, KeyValuePair<byte[], SlabSubrange> payload)
-    {
-        UseOutputSegment(segment);
-
-        var byteCount = payload.Key.Length + payload.Value.Length;
-        _outputSegmentStats = _outputSegmentStats with
-        {
-            TotalBytes = _outputSegmentStats.TotalBytes + byteCount,
+            StaleBytes = stats.StaleBytes + byteCount,
         };
     }
 
-    public void OnTombstoneAdded(Segment segment, byte[] tombstone)
+    public void Add(SegmentStatsBuilder builder)
     {
-        UseOutputSegment(segment);
+        // Drop any current entries that are within the range of generations covered by builder.Segment.
+        // This will happen only when merging a compacted segment.
+        var replaced = _statsBuilder.Keys
+            .SkipWhile(s => s.MinGeneration < builder.Segment.MinGeneration)
+            .TakeWhile(s => s.MaxGeneration <= builder.Segment.MaxGeneration)
+            .ToArray();
 
-        var byteCount = tombstone.Length;
-        _outputSegmentStats = _outputSegmentStats with
+        if (replaced.Length > 0)
         {
-            TotalBytes = _outputSegmentStats.TotalBytes + byteCount,
-            StaleBytes = _outputSegmentStats.StaleBytes + byteCount,
-        };
-    }
+            // Verify the before/after re. live bytes are equal
+            var liveBytesBeforeCompaction = replaced.Sum(s => _statsBuilder[s].LiveBytes);
+            var liveBytesAfterCompaction = builder.Stats.LiveBytes;
 
-    private void UseOutputSegment(Segment segment)
-    {
-        if (_outputSegment == segment)
-        {
-            return;
+            if (liveBytesBeforeCompaction != liveBytesAfterCompaction)
+            {
+                throw new InvalidOperationException();
+            }
+
+            _statsBuilder.RemoveRange(replaced);
         }
 
-        if (_outputSegment is not null)
-        {
-            _statsBuilder[_outputSegment] = _outputSegmentStats;
-        }
-
-        _outputSegment = segment;
-        _outputSegmentStats = new();
+        _statsBuilder[builder.Segment] = builder.Stats;
     }
 }

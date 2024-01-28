@@ -35,35 +35,70 @@ public sealed class KeyValueStore : IAsyncDisposable
         var changeSetAllocatedChannel = Channel.CreateUnbounded<ChangeSetAllocated>(new UnboundedChannelOptions
         {
             AllowSynchronousContinuations = true,
+            SingleWriter = true,
+            SingleReader = true,
         });
 
         var changesWrittenChannel = Channel.CreateUnbounded<ChangesWritten>(new UnboundedChannelOptions
         {
             AllowSynchronousContinuations = true,
+            SingleWriter = true,
+            SingleReader = true,
+        });
+
+        var compactionWrittenChannel = Channel.CreateUnbounded<CompactionWritten>(new UnboundedChannelOptions
+        {
+            AllowSynchronousContinuations = false,
+            SingleWriter = true,
+            SingleReader = true,
         });
 
         var indexUpdatedChannel = Channel.CreateUnbounded<IndexUpdated>(new UnboundedChannelOptions
         {
             AllowSynchronousContinuations = true,
+            SingleWriter = true,
+            SingleReader = true,
         });
 
         var segmentStatsUpdatedChannel = Channel.CreateBounded<SegmentStatsUpdated>(new BoundedChannelOptions(1)
         {
             AllowSynchronousContinuations = false,
             FullMode = BoundedChannelFullMode.DropNewest,
+            SingleWriter = true,
+            SingleReader = true,
+        });
+
+        var oldestObservableSnapshotChangedChannel = Channel.CreateBounded<OldestObservableSnapshotChanged>(new BoundedChannelOptions(1)
+        {
+            AllowSynchronousContinuations = false,
+            FullMode = BoundedChannelFullMode.DropNewest,
+            SingleWriter = true,
+            SingleReader = true,
+        });
+
+        var segmentsCompactedChannel = Channel.CreateUnbounded<SegmentsCompacted>(new UnboundedChannelOptions
+        {
+            AllowSynchronousContinuations = false,
+            SingleWriter = true,
+            SingleReader = true,
         });
 
         // Create actors involved in bootstrapping
-        var indexActor = new IndexActor(changesWrittenChannel, indexUpdatedChannel, segmentStatsUpdatedChannel);
-        var snapshotsActor = new SnapshotsActor(indexUpdatedChannel);
+        var indexActor = new IndexActor(changesWrittenChannel, compactionWrittenChannel, indexUpdatedChannel, segmentStatsUpdatedChannel);
+        var snapshotsActor = new SnapshotsActor(indexUpdatedChannel, oldestObservableSnapshotChangedChannel);
 
         // Load existing data
         var bootstrapResult = await Bootstrapper.LoadFromStorageAsync(storage, changesWrittenChannel);
 
         // Create actors involved in writes and balancing
-        var allocationActor = new AllocationActor(storage, changeSetAllocatedChannel, bootstrapResult.TotalBytes);
+        var allocationActor = new AllocationActor(storage, segmentsCompactedChannel, changeSetAllocatedChannel, bootstrapResult.TotalBytes);
         var writerActor = new WriterActor(changeSetAllocatedChannel, changesWrittenChannel, bootstrapResult.MaxGeneration);
-        var compactionActor = new CompactionActor(segmentStatsUpdatedChannel);
+        var compactionActor = new CompactionActor(
+            storage,
+            segmentStatsUpdatedChannel,
+            oldestObservableSnapshotChangedChannel,
+            compactionWrittenChannel,
+            segmentsCompactedChannel);
 
         var store = new KeyValueStore(
             allocationActor,
