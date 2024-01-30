@@ -28,16 +28,16 @@ public sealed class CompactionActor
 
     public CompactionActor(
         IBackingStorage storage,
-        Channel<SegmentStatsUpdated> segmentStatsUpdatedChannel,
-        Channel<OldestObservableSnapshotChanged> oldestObservableSnapshotChangedChannel,
-        Channel<CompactionWritten> compactionWrittenChannel,
-        Channel<SegmentsCompacted> segmentsCompactedChannel)
+        ChannelReader<SegmentStatsUpdated> segmentStatsUpdatedChannelReader,
+        ChannelReader<OldestObservableSnapshotChanged> oldestObservableSnapshotChangedChannelReader,
+        ChannelWriter<CompactionWritten> compactionWrittenChannelWriter,
+        ChannelWriter<SegmentsCompacted> segmentsCompactedChannelWriter)
     {
         _storage = storage;
-        _segmentStatsUpdatedChannelReader = segmentStatsUpdatedChannel.Reader;
-        _oldestObservableSnapshotChangedChannelReader = oldestObservableSnapshotChangedChannel.Reader;
-        _compactionWrittenChannelWriter = compactionWrittenChannel.Writer;
-        _segmentsCompactedChannelWriter = segmentsCompactedChannel.Writer;
+        _segmentStatsUpdatedChannelReader = segmentStatsUpdatedChannelReader;
+        _oldestObservableSnapshotChangedChannelReader = oldestObservableSnapshotChangedChannelReader;
+        _compactionWrittenChannelWriter = compactionWrittenChannelWriter;
+        _segmentsCompactedChannelWriter = segmentsCompactedChannelWriter;
     }
 
     public async Task RunAsync()

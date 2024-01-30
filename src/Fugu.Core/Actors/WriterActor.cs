@@ -13,12 +13,12 @@ public sealed class WriterActor
     private SegmentBuilder? _segmentBuilder;
 
     public WriterActor(
-        Channel<ChangeSetAllocated> changeSetAllocatedChannel,
-        Channel<ChangesWritten> changesWrittenChannel,
+        ChannelReader<ChangeSetAllocated> changeSetAllocatedChannelReader,
+        ChannelWriter<ChangesWritten> changesWrittenChannelWriter,
         long maxGeneration)
     {
-        _changeSetAllocatedChannelReader = changeSetAllocatedChannel.Reader;
-        _changesWrittenChannelWriter = changesWrittenChannel.Writer;
+        _changeSetAllocatedChannelReader = changeSetAllocatedChannelReader;
+        _changesWrittenChannelWriter = changesWrittenChannelWriter;
         _outputGeneration = maxGeneration;
     }
 

@@ -26,13 +26,13 @@ public sealed class AllocationActor
 
     public AllocationActor(
         IBackingStorage storage,
-        Channel<SegmentsCompacted> segmentsCompactedChannel,
-        Channel<ChangeSetAllocated> changeSetAllocatedChannel,
+        ChannelReader<SegmentsCompacted> segmentsCompactedChannelReader,
+        ChannelWriter<ChangeSetAllocated> changeSetAllocatedChannelWriter,
         long totalBytes)
     {
         _storage = storage;
-        _segmentsCompactedChannelReader = segmentsCompactedChannel.Reader;
-        _changeSetAllocatedChannelWriter = changeSetAllocatedChannel.Writer;
+        _segmentsCompactedChannelReader = segmentsCompactedChannelReader;
+        _changeSetAllocatedChannelWriter = changeSetAllocatedChannelWriter;
         _totalBytes = totalBytes;
     }
 

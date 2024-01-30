@@ -19,15 +19,15 @@ public sealed partial class IndexActor
     private readonly SegmentStatsTracker _statsTracker = new();
 
     public IndexActor(
-        Channel<ChangesWritten> changesWrittenChannel,
-        Channel<CompactionWritten> compactionWrittenChannel,
-        Channel<IndexUpdated> indexUpdatedChannel,
-        Channel<SegmentStatsUpdated> segmentStatsUpdatedChannel)
+        ChannelReader<ChangesWritten> changesWrittenChannelReader,
+        ChannelReader<CompactionWritten> compactionWrittenChannelReader,
+        ChannelWriter<IndexUpdated> indexUpdatedChannelWriter,
+        ChannelWriter<SegmentStatsUpdated> segmentStatsUpdatedChannelWriter)
     {
-        _changesWrittenChannelReader = changesWrittenChannel.Reader;
-        _compactionWrittenChannelReader = compactionWrittenChannel.Reader;
-        _indexUpdatedChannelWriter = indexUpdatedChannel.Writer;
-        _segmentStatsUpdatedChannelWriter = segmentStatsUpdatedChannel.Writer;
+        _changesWrittenChannelReader = changesWrittenChannelReader;
+        _compactionWrittenChannelReader = compactionWrittenChannelReader;
+        _indexUpdatedChannelWriter = indexUpdatedChannelWriter;
+        _segmentStatsUpdatedChannelWriter = segmentStatsUpdatedChannelWriter;
     }
 
     public async Task RunAsync()

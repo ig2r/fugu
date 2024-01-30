@@ -36,11 +36,11 @@ public sealed class SnapshotsActor : ISnapshotOwner
         }));
 
     public SnapshotsActor(
-        Channel<IndexUpdated> indexUpdatedChannel,
-        Channel<OldestObservableSnapshotChanged> oldestObservableSnapshotChangedChannel)
+        ChannelReader<IndexUpdated> indexUpdatedChannelReader,
+        ChannelWriter<OldestObservableSnapshotChanged> oldestObservableSnapshotChangedChannelWriter)
     {
-        _indexUpdatedChannelReader = indexUpdatedChannel.Reader;
-        _oldestObservableSnapshotChangedChannelWriter = oldestObservableSnapshotChangedChannel.Writer;
+        _indexUpdatedChannelReader = indexUpdatedChannelReader;
+        _oldestObservableSnapshotChangedChannelWriter = oldestObservableSnapshotChangedChannelWriter;
     }
 
     public async Task RunAsync()
