@@ -64,21 +64,7 @@ Fugu consists of three major conceptual building blocks:
 
 The following diagram illustrates messaging paths between actors and the `KeyValueStore` facade.
 
-```mermaid
-graph TD;
-    KeyValueStore(KeyValueStore facade);
-    KeyValueStore -- Submit change set --> Allocation;
-    KeyValueStore -- Acquire/release --> Snapshots;
-
-    Allocation -- ChangeSetAllocated --> Writer;
-    Writer -- ChangesWritten --> Index;
-    Index -- IndexUpdated --> Snapshots;
-
-    Index -- SegmentStatsUpdated --> Compaction;
-    Snapshots -- OldestObservableSnapshotChanged --> Compaction;
-    Compaction -- CompactionWritten --> Index;
-    Compaction -- SegmentsCompacted --> Allocation;
-```
+![Actor mesh](docs/actor-mesh.png)
 
 ## Compaction strategy
 
