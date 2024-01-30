@@ -9,25 +9,25 @@ public sealed partial class IndexActor
 {
     private readonly SemaphoreSlim _semaphore = new(1);
 
-    private readonly Channel<ChangesWritten> _changesWrittenChannel;
-    private readonly Channel<CompactionWritten> _compactionWrittenChannel;
-    private readonly Channel<IndexUpdated> _indexUpdatedChannel;
-    private readonly Channel<SegmentStatsUpdated> _segmentStatsUpdatedChannel;
+    private readonly ChannelReader<ChangesWritten> _changesWrittenChannelReader;
+    private readonly ChannelReader<CompactionWritten> _compactionWrittenChannelReader;
+    private readonly ChannelWriter<IndexUpdated> _indexUpdatedChannelWriter;
+    private readonly ChannelWriter<SegmentStatsUpdated> _segmentStatsUpdatedChannelWriter;
 
     private VectorClock _clock = default;
     private ImmutableDictionary<byte[], IndexEntry> _index = ImmutableDictionary.Create<byte[], IndexEntry>(ByteArrayEqualityComparer.Shared);
     private readonly SegmentStatsTracker _statsTracker = new();
 
     public IndexActor(
-        Channel<ChangesWritten> changesWrittenChannel,
-        Channel<CompactionWritten> compactionWrittenChannel,
-        Channel<IndexUpdated> indexUpdatedChannel,
-        Channel<SegmentStatsUpdated> segmentStatsUpdatedChannel)
+        ChannelReader<ChangesWritten> changesWrittenChannelReader,
+        ChannelReader<CompactionWritten> compactionWrittenChannelReader,
+        ChannelWriter<IndexUpdated> indexUpdatedChannelWriter,
+        ChannelWriter<SegmentStatsUpdated> segmentStatsUpdatedChannelWriter)
     {
-        _changesWrittenChannel = changesWrittenChannel;
-        _compactionWrittenChannel = compactionWrittenChannel;
-        _indexUpdatedChannel = indexUpdatedChannel;
-        _segmentStatsUpdatedChannel = segmentStatsUpdatedChannel;
+        _changesWrittenChannelReader = changesWrittenChannelReader;
+        _compactionWrittenChannelReader = compactionWrittenChannelReader;
+        _indexUpdatedChannelWriter = indexUpdatedChannelWriter;
+        _segmentStatsUpdatedChannelWriter = segmentStatsUpdatedChannelWriter;
     }
 
     public async Task RunAsync()
@@ -41,9 +41,9 @@ public sealed partial class IndexActor
     {
         SegmentStatsBuilder? currentOutputSegmentStatsBuilder = null;
 
-        while (await _changesWrittenChannel.Reader.WaitToReadAsync())
+        while (await _changesWrittenChannelReader.WaitToReadAsync())
         {
-            var message = await _changesWrittenChannel.Reader.ReadAsync();
+            var message = await _changesWrittenChannelReader.ReadAsync();
             await _semaphore.WaitAsync();
 
             try
@@ -113,14 +113,14 @@ public sealed partial class IndexActor
                 var stats = _statsTracker.ToImmutable();
                 EnsureIndexAndStatsConsistent(_index, stats);
 
-                await _indexUpdatedChannel.Writer.WriteAsync(
+                await _indexUpdatedChannelWriter.WriteAsync(
                     new IndexUpdated(
                         Clock: _clock,
                         Index: _index));
 
                 if (!stats.IsEmpty)
                 {
-                    await _segmentStatsUpdatedChannel.Writer.WriteAsync(
+                    await _segmentStatsUpdatedChannelWriter.WriteAsync(
                         new SegmentStatsUpdated(
                             Clock: _clock,
                             Stats: stats,
@@ -134,15 +134,15 @@ public sealed partial class IndexActor
         }
 
         // Propagate completion
-        _indexUpdatedChannel.Writer.Complete();
-        _segmentStatsUpdatedChannel.Writer.Complete();
+        _indexUpdatedChannelWriter.Complete();
+        _segmentStatsUpdatedChannelWriter.Complete();
     }
 
     private async Task ProcessCompactionWrittenMessagesAsync()
     {
-        while (await _compactionWrittenChannel.Reader.WaitToReadAsync())
+        while (await _compactionWrittenChannelReader.WaitToReadAsync())
         {
-            var message = await _compactionWrittenChannel.Reader.ReadAsync();
+            var message = await _compactionWrittenChannelReader.ReadAsync();
             await _semaphore.WaitAsync();
 
             try
@@ -188,7 +188,7 @@ public sealed partial class IndexActor
                 var stats = _statsTracker.ToImmutable();
                 EnsureIndexAndStatsConsistent(_index, stats);
 
-                await _indexUpdatedChannel.Writer.WriteAsync(
+                await _indexUpdatedChannelWriter.WriteAsync(
                     new IndexUpdated(
                         Clock: _clock,
                         Index: _index));
@@ -196,7 +196,7 @@ public sealed partial class IndexActor
 
                 if (!stats.IsEmpty)
                 {
-                    await _segmentStatsUpdatedChannel.Writer.WriteAsync(
+                    await _segmentStatsUpdatedChannelWriter.WriteAsync(
                         new SegmentStatsUpdated(
                             Clock: _clock,
                             Stats: stats,

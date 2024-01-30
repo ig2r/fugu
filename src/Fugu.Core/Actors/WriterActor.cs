@@ -6,27 +6,27 @@ namespace Fugu.Actors;
 
 public sealed class WriterActor
 {
-    private readonly Channel<ChangeSetAllocated> _changeSetAllocatedChannel;
-    private readonly Channel<ChangesWritten> _changesWrittenChannel;
+    private readonly ChannelReader<ChangeSetAllocated> _changeSetAllocatedChannelReader;
+    private readonly ChannelWriter<ChangesWritten> _changesWrittenChannelWriter;
 
     private long _outputGeneration;
     private SegmentBuilder? _segmentBuilder;
 
     public WriterActor(
-        Channel<ChangeSetAllocated> changeSetAllocatedChannel,
-        Channel<ChangesWritten> changesWrittenChannel,
+        ChannelReader<ChangeSetAllocated> changeSetAllocatedChannelReader,
+        ChannelWriter<ChangesWritten> changesWrittenChannelWriter,
         long maxGeneration)
     {
-        _changeSetAllocatedChannel = changeSetAllocatedChannel;
-        _changesWrittenChannel = changesWrittenChannel;
+        _changeSetAllocatedChannelReader = changeSetAllocatedChannelReader;
+        _changesWrittenChannelWriter = changesWrittenChannelWriter;
         _outputGeneration = maxGeneration;
     }
 
     public async Task RunAsync()
     {
-        while (await _changeSetAllocatedChannel.Reader.WaitToReadAsync())
+        while (await _changeSetAllocatedChannelReader.WaitToReadAsync())
         {
-            var message = await _changeSetAllocatedChannel.Reader.ReadAsync();
+            var message = await _changeSetAllocatedChannelReader.ReadAsync();
 
             if (_segmentBuilder is null || message.OutputSlab != _segmentBuilder.Segment.Slab)
             {
@@ -46,7 +46,7 @@ public sealed class WriterActor
             var writtenPayloads = await _segmentBuilder.WriteChangeSetAsync(message.ChangeSet);
 
             // Propagate changes downstream
-            await _changesWrittenChannel.Writer.WriteAsync(
+            await _changesWrittenChannelWriter.WriteAsync(
                 new ChangesWritten(
                     Clock: message.Clock,
                     OutputSegment: _segmentBuilder.Segment,
@@ -57,6 +57,6 @@ public sealed class WriterActor
         // TODO: Terminate current output segment, if any
 
         // Propagate completion
-        _changesWrittenChannel.Writer.Complete();
+        _changesWrittenChannelWriter.Complete();
     }
 }

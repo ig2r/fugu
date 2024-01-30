@@ -84,21 +84,37 @@ public sealed class KeyValueStore : IAsyncDisposable
         });
 
         // Create actors involved in bootstrapping
-        var indexActor = new IndexActor(changesWrittenChannel, compactionWrittenChannel, indexUpdatedChannel, segmentStatsUpdatedChannel);
-        var snapshotsActor = new SnapshotsActor(indexUpdatedChannel, oldestObservableSnapshotChangedChannel);
+        var indexActor = new IndexActor(
+            changesWrittenChannel.Reader,
+            compactionWrittenChannel.Reader,
+            indexUpdatedChannel.Writer,
+            segmentStatsUpdatedChannel.Writer);
+
+        var snapshotsActor = new SnapshotsActor(
+            indexUpdatedChannel.Reader,
+            oldestObservableSnapshotChangedChannel.Writer);
 
         // Load existing data
         var bootstrapResult = await Bootstrapper.LoadFromStorageAsync(storage, changesWrittenChannel);
 
         // Create actors involved in writes and balancing
-        var allocationActor = new AllocationActor(storage, segmentsCompactedChannel, changeSetAllocatedChannel, bootstrapResult.TotalBytes);
-        var writerActor = new WriterActor(changeSetAllocatedChannel, changesWrittenChannel, bootstrapResult.MaxGeneration);
+        var allocationActor = new AllocationActor(
+            storage,
+            segmentsCompactedChannel.Reader,
+            changeSetAllocatedChannel.Writer,
+            bootstrapResult.TotalBytes);
+
+        var writerActor = new WriterActor(
+            changeSetAllocatedChannel.Reader,
+            changesWrittenChannel.Writer,
+            bootstrapResult.MaxGeneration);
+
         var compactionActor = new CompactionActor(
             storage,
-            segmentStatsUpdatedChannel,
-            oldestObservableSnapshotChangedChannel,
-            compactionWrittenChannel,
-            segmentsCompactedChannel);
+            segmentStatsUpdatedChannel.Reader,
+            oldestObservableSnapshotChangedChannel.Reader,
+            compactionWrittenChannel.Writer,
+            segmentsCompactedChannel.Writer);
 
         var store = new KeyValueStore(
             allocationActor,

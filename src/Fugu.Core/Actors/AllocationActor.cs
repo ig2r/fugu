@@ -9,8 +9,8 @@ public sealed class AllocationActor
 {
     private readonly SemaphoreSlim _semaphore = new(1);
     private readonly IBackingStorage _storage;
-    private readonly Channel<SegmentsCompacted> _segmentsCompactedChannel;
-    private readonly Channel<ChangeSetAllocated> _changeSetAllocatedChannel;
+    private readonly ChannelReader<SegmentsCompacted> _segmentsCompactedChannelReader;
+    private readonly ChannelWriter<ChangeSetAllocated> _changeSetAllocatedChannelWriter;
     
     private VectorClock _clock = new(Write: 0, Compaction: 0);
 
@@ -26,21 +26,21 @@ public sealed class AllocationActor
 
     public AllocationActor(
         IBackingStorage storage,
-        Channel<SegmentsCompacted> segmentsCompactedChannel,
-        Channel<ChangeSetAllocated> changeSetAllocatedChannel,
+        ChannelReader<SegmentsCompacted> segmentsCompactedChannelReader,
+        ChannelWriter<ChangeSetAllocated> changeSetAllocatedChannelWriter,
         long totalBytes)
     {
         _storage = storage;
-        _segmentsCompactedChannel = segmentsCompactedChannel;
-        _changeSetAllocatedChannel = changeSetAllocatedChannel;
+        _segmentsCompactedChannelReader = segmentsCompactedChannelReader;
+        _changeSetAllocatedChannelWriter = changeSetAllocatedChannelWriter;
         _totalBytes = totalBytes;
     }
 
     public async Task RunAsync()
     {
-        while (await _segmentsCompactedChannel.Reader.WaitToReadAsync())
+        while (await _segmentsCompactedChannelReader.WaitToReadAsync())
         {
-            var message = await _segmentsCompactedChannel.Reader.ReadAsync();
+            var message = await _segmentsCompactedChannelReader.ReadAsync();
             await _semaphore.WaitAsync();
 
             try
@@ -65,7 +65,7 @@ public sealed class AllocationActor
 
         try
         {
-            _changeSetAllocatedChannel.Writer.Complete();
+            _changeSetAllocatedChannelWriter.Complete();
         }
         finally
         {
@@ -101,7 +101,7 @@ public sealed class AllocationActor
 
             _outputSlabBytesWritten += ChangeSetUtils.GetDataBytes(changeSet);
 
-            await _changeSetAllocatedChannel.Writer.WriteAsync(
+            await _changeSetAllocatedChannelWriter.WriteAsync(
                 new ChangeSetAllocated(
                     Clock: _clock,
                     ChangeSet: changeSet,

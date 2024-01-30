@@ -7,8 +7,8 @@ namespace Fugu.Actors;
 public sealed class SnapshotsActor : ISnapshotOwner
 {
     private readonly SemaphoreSlim _semaphore = new(1);
-    private readonly Channel<IndexUpdated> _indexUpdatedChannel;
-    private readonly Channel<OldestObservableSnapshotChanged> _oldestObservableSnapshotChangedChannel;
+    private readonly ChannelReader<IndexUpdated> _indexUpdatedChannelReader;
+    private readonly ChannelWriter<OldestObservableSnapshotChanged> _oldestObservableSnapshotChangedChannelWriter;
 
     private VectorClock _clock;
     private IReadOnlyDictionary<byte[], IndexEntry> _index = new Dictionary<byte[], IndexEntry>();
@@ -36,18 +36,18 @@ public sealed class SnapshotsActor : ISnapshotOwner
         }));
 
     public SnapshotsActor(
-        Channel<IndexUpdated> indexUpdatedChannel,
-        Channel<OldestObservableSnapshotChanged> oldestObservableSnapshotChangedChannel)
+        ChannelReader<IndexUpdated> indexUpdatedChannelReader,
+        ChannelWriter<OldestObservableSnapshotChanged> oldestObservableSnapshotChangedChannelWriter)
     {
-        _indexUpdatedChannel = indexUpdatedChannel;
-        _oldestObservableSnapshotChangedChannel = oldestObservableSnapshotChangedChannel;
+        _indexUpdatedChannelReader = indexUpdatedChannelReader;
+        _oldestObservableSnapshotChangedChannelWriter = oldestObservableSnapshotChangedChannelWriter;
     }
 
     public async Task RunAsync()
     {
-        while (await _indexUpdatedChannel.Reader.WaitToReadAsync())
+        while (await _indexUpdatedChannelReader.WaitToReadAsync())
         {
-            var message = await _indexUpdatedChannel.Reader.ReadAsync();
+            var message = await _indexUpdatedChannelReader.ReadAsync();
             await _semaphore.WaitAsync();
 
             try
@@ -78,7 +78,7 @@ public sealed class SnapshotsActor : ISnapshotOwner
                 // observed anymore.
                 if (compactionClockStepped && _activeSnapshotsByClock.Count == 0)
                 {
-                    await _oldestObservableSnapshotChangedChannel.Writer.WriteAsync(
+                    await _oldestObservableSnapshotChangedChannelWriter.WriteAsync(
                         new OldestObservableSnapshotChanged(_clock));
                 }
             }
@@ -91,7 +91,7 @@ public sealed class SnapshotsActor : ISnapshotOwner
         // TODO: Maybe wait until all open snapshots have been disposed?
         // Or throw if there are any open snapshots around?
 
-        _oldestObservableSnapshotChangedChannel.Writer.Complete();
+        _oldestObservableSnapshotChangedChannelWriter.Complete();
     }
 
     public async ValueTask WaitForObservableEffectsAsync(VectorClock threshold)
@@ -155,7 +155,7 @@ public sealed class SnapshotsActor : ISnapshotOwner
                 var oldestClock = _activeSnapshotsByClock.Keys.DefaultIfEmpty(_clock).First();
                 if (oldestClock >= snapshot.Clock)
                 {
-                    await _oldestObservableSnapshotChangedChannel.Writer.WriteAsync(
+                    await _oldestObservableSnapshotChangedChannelWriter.WriteAsync(
                         new OldestObservableSnapshotChanged(oldestClock)
                     );
                 }

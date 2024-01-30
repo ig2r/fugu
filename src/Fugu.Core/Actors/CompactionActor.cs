@@ -10,10 +10,10 @@ public sealed class CompactionActor
     private readonly SemaphoreSlim _semaphore = new(1);
 
     private readonly IBackingStorage _storage;
-    private readonly Channel<SegmentStatsUpdated> _segmentStatsUpdatedChannel;
-    private readonly Channel<OldestObservableSnapshotChanged> _oldestObservableSnapshotChangedChannel;
-    private readonly Channel<CompactionWritten> _compactionWrittenChannel;
-    private readonly Channel<SegmentsCompacted> _segmentsCompactedChannel;
+    private readonly ChannelReader<SegmentStatsUpdated> _segmentStatsUpdatedChannelReader;
+    private readonly ChannelReader<OldestObservableSnapshotChanged> _oldestObservableSnapshotChangedChannelReader;
+    private readonly ChannelWriter<CompactionWritten> _compactionWrittenChannelWriter;
+    private readonly ChannelWriter<SegmentsCompacted> _segmentsCompactedChannelWriter;
 
     private readonly PriorityQueue<Segment, VectorClock> _segmentsAwaitingRemoval = new(
         Comparer<VectorClock>.Create((x, y) =>
@@ -28,16 +28,16 @@ public sealed class CompactionActor
 
     public CompactionActor(
         IBackingStorage storage,
-        Channel<SegmentStatsUpdated> segmentStatsUpdatedChannel,
-        Channel<OldestObservableSnapshotChanged> oldestObservableSnapshotChangedChannel,
-        Channel<CompactionWritten> compactionWrittenChannel,
-        Channel<SegmentsCompacted> segmentsCompactedChannel)
+        ChannelReader<SegmentStatsUpdated> segmentStatsUpdatedChannelReader,
+        ChannelReader<OldestObservableSnapshotChanged> oldestObservableSnapshotChangedChannelReader,
+        ChannelWriter<CompactionWritten> compactionWrittenChannelWriter,
+        ChannelWriter<SegmentsCompacted> segmentsCompactedChannelWriter)
     {
         _storage = storage;
-        _segmentStatsUpdatedChannel = segmentStatsUpdatedChannel;
-        _oldestObservableSnapshotChangedChannel = oldestObservableSnapshotChangedChannel;
-        _compactionWrittenChannel = compactionWrittenChannel;
-        _segmentsCompactedChannel = segmentsCompactedChannel;
+        _segmentStatsUpdatedChannelReader = segmentStatsUpdatedChannelReader;
+        _oldestObservableSnapshotChangedChannelReader = oldestObservableSnapshotChangedChannelReader;
+        _compactionWrittenChannelWriter = compactionWrittenChannelWriter;
+        _segmentsCompactedChannelWriter = segmentsCompactedChannelWriter;
     }
 
     public async Task RunAsync()
@@ -46,16 +46,16 @@ public sealed class CompactionActor
             ProcessSegmentStatsUpdatedMessagesAsync(),
             ProcessOldestObservableSnapshotChangedMessagesAsync());
 
-        _segmentsCompactedChannel.Writer.Complete();
+        _segmentsCompactedChannelWriter.Complete();
     }
 
     private async Task ProcessSegmentStatsUpdatedMessagesAsync()
     {
         long compactionClockThreshold = 0;
 
-        while (await _segmentStatsUpdatedChannel.Reader.WaitToReadAsync())
+        while (await _segmentStatsUpdatedChannelReader.WaitToReadAsync())
         {
-            var message = await _segmentStatsUpdatedChannel.Reader.ReadAsync();
+            var message = await _segmentStatsUpdatedChannelReader.ReadAsync();
 
             // Discard messages while we're still waiting for the effects of a previous compaction to become observable
             if (message.Clock.Compaction < compactionClockThreshold)
@@ -112,7 +112,7 @@ public sealed class CompactionActor
                         sourceStats.Select(kvp => kvp.Key).ToArray(),
                         message.Index);
 
-                    await _compactionWrittenChannel.Writer.WriteAsync(
+                    await _compactionWrittenChannelWriter.WriteAsync(
                         new CompactionWritten(
                             Clock: message.Clock with { Compaction = compactionClockThreshold },
                             OutputSegment: compactedSegment,
@@ -134,7 +134,7 @@ public sealed class CompactionActor
                     // account for it by making future segments smaller again.
                     // Note that we can either do this here, OR when the old segments actually get evicted because
                     // no snapshots reference them anymore.
-                    await _segmentsCompactedChannel.Writer.WriteAsync(
+                    await _segmentsCompactedChannelWriter.WriteAsync(
                         new SegmentsCompacted(CapacityChange: capacityChange));
                 }
             }
@@ -145,14 +145,14 @@ public sealed class CompactionActor
         }
 
         // Propagate completion
-        _compactionWrittenChannel.Writer.Complete();
+        _compactionWrittenChannelWriter.Complete();
     }
 
     private async Task ProcessOldestObservableSnapshotChangedMessagesAsync()
     {
-        while (await _oldestObservableSnapshotChangedChannel.Reader.WaitToReadAsync())
+        while (await _oldestObservableSnapshotChangedChannelReader.WaitToReadAsync())
         {
-            var message = await _oldestObservableSnapshotChangedChannel.Reader.ReadAsync();
+            var message = await _oldestObservableSnapshotChangedChannelReader.ReadAsync();
             await _semaphore.WaitAsync();
 
             try
