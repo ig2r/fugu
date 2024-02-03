@@ -40,20 +40,29 @@ public sealed class CompactionActor
         _segmentsCompactedChannelWriter = segmentsCompactedChannelWriter;
     }
 
-    public async Task RunAsync()
+    public async Task RunAsync(CancellationToken cancellationToken)
     {
-        await Task.WhenAll(
-            ProcessSegmentStatsUpdatedMessagesAsync(),
-            ProcessOldestObservableSnapshotChangedMessagesAsync());
+        try
+        {
+            await Task.WhenAll(
+                ProcessSegmentStatsUpdatedMessagesAsync(cancellationToken),
+                ProcessOldestObservableSnapshotChangedMessagesAsync(cancellationToken));
+        }
+        catch (OperationCanceledException ex) when (ex.CancellationToken == cancellationToken)
+        {
+            // Expected during shutdown.
+        }
 
+        // Propagate completion
+        _compactionWrittenChannelWriter.Complete();
         _segmentsCompactedChannelWriter.Complete();
     }
 
-    private async Task ProcessSegmentStatsUpdatedMessagesAsync()
+    private async Task ProcessSegmentStatsUpdatedMessagesAsync(CancellationToken cancellationToken)
     {
         long compactionClockThreshold = 0;
 
-        while (await _segmentStatsUpdatedChannelReader.WaitToReadAsync())
+        while (await _segmentStatsUpdatedChannelReader.WaitToReadAsync(cancellationToken))
         {
             var message = await _segmentStatsUpdatedChannelReader.ReadAsync();
 
@@ -143,14 +152,11 @@ public sealed class CompactionActor
                 _semaphore.Release();
             }
         }
-
-        // Propagate completion
-        _compactionWrittenChannelWriter.Complete();
     }
 
-    private async Task ProcessOldestObservableSnapshotChangedMessagesAsync()
+    private async Task ProcessOldestObservableSnapshotChangedMessagesAsync(CancellationToken cancellationToken)
     {
-        while (await _oldestObservableSnapshotChangedChannelReader.WaitToReadAsync())
+        while (await _oldestObservableSnapshotChangedChannelReader.WaitToReadAsync(cancellationToken))
         {
             var message = await _oldestObservableSnapshotChangedChannelReader.ReadAsync();
             await _semaphore.WaitAsync();

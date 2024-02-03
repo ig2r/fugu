@@ -57,20 +57,9 @@ public sealed class AllocationActor
                 _semaphore.Release();
             }
         }
-    }
 
-    public async Task CompleteAsync()
-    {
-        await _semaphore.WaitAsync();
-
-        try
-        {
-            _changeSetAllocatedChannelWriter.Complete();
-        }
-        finally
-        {
-            _semaphore.Release();
-        }
+        // Propagate completion
+        _changeSetAllocatedChannelWriter.Complete();
     }
 
     public async ValueTask<VectorClock> EnqueueChangeSetAsync(ChangeSet changeSet)
@@ -97,7 +86,7 @@ public sealed class AllocationActor
             {
                 _outputSlab = await _storage.CreateSlabAsync();
                 _outputSlabSizeLimit = GetOutputSizeLimit(_totalBytes);
-             }
+            }
 
             _outputSlabBytesWritten += ChangeSetUtils.GetDataBytes(changeSet);
 

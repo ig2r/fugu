@@ -7,6 +7,8 @@ namespace Fugu;
 
 public sealed class KeyValueStore : IAsyncDisposable
 {
+    private readonly CancellationTokenSource _completionTokenSource = new();
+
     private readonly AllocationActor _allocationActor;
     private readonly WriterActor _writerActor;
     private readonly IndexActor _indexActor;
@@ -131,12 +133,16 @@ public sealed class KeyValueStore : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         // TODO: currently, this will throw when disposing multiple times; should not throw
-        await _allocationActor.CompleteAsync();
+        //await _allocationActor.CompleteAsync();
+
+        _completionTokenSource.Cancel();
 
         if (_runTask is not null)
         {
             await _runTask;
         }
+
+        _completionTokenSource.Dispose();
     }
 
     public ValueTask<Snapshot> GetSnapshotAsync()
@@ -160,6 +166,6 @@ public sealed class KeyValueStore : IAsyncDisposable
             _writerActor.RunAsync(),
             _indexActor.RunAsync(),
             _snapshotsActor.RunAsync(),
-            _compactionActor.RunAsync());
+            _compactionActor.RunAsync(_completionTokenSource.Token));
     }
 }
