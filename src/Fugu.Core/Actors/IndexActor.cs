@@ -35,6 +35,10 @@ public sealed partial class IndexActor
         await Task.WhenAll(
             ProcessChangesWrittenMessagesAsync(),
             ProcessCompactionWrittenMessagesAsync());
+
+        // Propagate completion
+        _indexUpdatedChannelWriter.Complete();
+        _segmentStatsUpdatedChannelWriter.Complete();
     }
 
     private async Task ProcessChangesWrittenMessagesAsync()
@@ -132,10 +136,6 @@ public sealed partial class IndexActor
                 _semaphore.Release();
             }
         }
-
-        // Propagate completion
-        _indexUpdatedChannelWriter.Complete();
-        _segmentStatsUpdatedChannelWriter.Complete();
     }
 
     private async Task ProcessCompactionWrittenMessagesAsync()
