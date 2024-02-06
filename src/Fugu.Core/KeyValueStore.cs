@@ -33,29 +33,33 @@ public sealed class KeyValueStore : IAsyncDisposable
 
     public static async ValueTask<KeyValueStore> CreateAsync(IBackingStorage storage)
     {
+        const int defaultCapacity = 512;
+
         // Create channels
-        var changeSetAllocatedChannel = Channel.CreateUnbounded<ChangeSetAllocated>(new UnboundedChannelOptions
+        var changeSetAllocatedChannel = Channel.CreateBounded<ChangeSetAllocated>(new BoundedChannelOptions(defaultCapacity)
         {
             AllowSynchronousContinuations = true,
             SingleWriter = true,
             SingleReader = true,
         });
 
-        var changesWrittenChannel = Channel.CreateUnbounded<ChangesWritten>(new UnboundedChannelOptions
+        var changesWrittenChannel = Channel.CreateBounded<ChangesWritten>(new BoundedChannelOptions(defaultCapacity)
         {
             AllowSynchronousContinuations = true,
             SingleWriter = true,
             SingleReader = true,
         });
 
-        var compactionWrittenChannel = Channel.CreateUnbounded<CompactionWritten>(new UnboundedChannelOptions
+        // Single-element channel because CompactionActor waits for effects of a compaction to become observable before
+        // starting the next compaction.
+        var compactionWrittenChannel = Channel.CreateBounded<CompactionWritten>(new BoundedChannelOptions(1)
         {
             AllowSynchronousContinuations = false,
             SingleWriter = true,
             SingleReader = true,
         });
 
-        var indexUpdatedChannel = Channel.CreateUnbounded<IndexUpdated>(new UnboundedChannelOptions
+        var indexUpdatedChannel = Channel.CreateBounded<IndexUpdated>(new BoundedChannelOptions(defaultCapacity)
         {
             AllowSynchronousContinuations = true,
             SingleWriter = true,
@@ -78,6 +82,8 @@ public sealed class KeyValueStore : IAsyncDisposable
             SingleReader = true,
         });
 
+        // Unbounded because this channel sees little traffic, yet serves as an "elasticity escape hatch" to rule out the
+        // possibility of deadlocking the actor mesh if channel messages should ever back up.
         var segmentsCompactedChannel = Channel.CreateUnbounded<SegmentsCompacted>(new UnboundedChannelOptions
         {
             AllowSynchronousContinuations = false,
