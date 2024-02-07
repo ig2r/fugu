@@ -15,16 +15,7 @@ public sealed class CompactionActor
     private readonly ChannelWriter<CompactionWritten> _compactionWrittenChannelWriter;
     private readonly ChannelWriter<SegmentsCompacted> _segmentsCompactedChannelWriter;
 
-    private readonly PriorityQueue<Segment, VectorClock> _segmentsAwaitingRemoval = new(
-        Comparer<VectorClock>.Create((x, y) =>
-        {
-            var componentComparer = Comparer<long>.Default;
-            var writeComparison = componentComparer.Compare(x.Write, y.Write);
-
-            return writeComparison != 0
-                ? writeComparison
-                : componentComparer.Compare(x.Compaction, y.Compaction);
-        }));
+    private readonly Queue<PendingCompactionCleanup> _pendingCompactionCleanups = new();
 
     public CompactionActor(
         IBackingStorage storage,
@@ -121,30 +112,26 @@ public sealed class CompactionActor
                         sourceStats.Select(kvp => kvp.Key).ToArray(),
                         message.Index);
 
+                    // Tell index actor about compaction so that it'll reflect the changes in the main index.
                     await _compactionWrittenChannelWriter.WriteAsync(
                         new CompactionWritten(
                             Clock: message.Clock with { Compaction = compactionClockThreshold },
                             OutputSegment: compactedSegment,
                             Changes: compactedChanges));
 
-                    // Cannot delete the source segments right away because there might be active snapshots
-                    // that reference it. Instead, add them to a list and delete them when SnapshotsActor signals
-                    // that no states before the current compaction clock are observable in snapshots anymore.
-                    _segmentsAwaitingRemoval.EnqueueRange(
-                        sourceStats.Select(kvp => kvp.Key),
-                        message.Clock with { Compaction = compactionClockThreshold });
-
                     // Determine by how much the store's total capacity changes with this compaction.
                     var oldCapacity = sourceStats.Sum(s => s.Value.TotalBytes);
                     var newCapacity = ChangeSetUtils.GetDataBytes(compactedChanges);
                     var capacityChange = newCapacity - oldCapacity;
 
-                    // TODO: Tell allocation actor that the store's total capacity has decreased, so that it will
-                    // account for it by making future segments smaller again.
-                    // Note that we can either do this here, OR when the old segments actually get evicted because
-                    // no snapshots reference them anymore.
-                    await _segmentsCompactedChannelWriter.WriteAsync(
-                        new SegmentsCompacted(CapacityChange: capacityChange));
+                    // Cannot delete the source segments right away because there might be active snapshots
+                    // that reference it. Instead, add them to a list and delete them when SnapshotsActor signals
+                    // that no states before the current compaction clock are observable in snapshots anymore.
+                    _pendingCompactionCleanups.Enqueue(new(
+                        CompactionClock: compactionClockThreshold,
+                        Segments: sourceStats.Select(kvp => kvp.Key).ToArray(),
+                        CapacityChange: capacityChange
+                    ));
                 }
             }
             finally
@@ -163,11 +150,19 @@ public sealed class CompactionActor
 
             try
             {
-                while (_segmentsAwaitingRemoval.TryPeek(out var _, out var compactedAt) && message.Clock.Compaction >= compactedAt.Compaction)
+                while (_pendingCompactionCleanups.TryPeek(out var cleanup) && message.Clock.Compaction >= cleanup.CompactionClock)
                 {
-                    // Remove this segment, it can no longer be referenced in snapshots
-                    var segment = _segmentsAwaitingRemoval.Dequeue();
-                    await _storage.RemoveSlabAsync(segment.Slab);
+                    _pendingCompactionCleanups.Dequeue();
+
+                    foreach (var segment in cleanup.Segments)
+                    {
+                        await _storage.RemoveSlabAsync(segment.Slab);
+                    }
+
+                    // Tell allocation actor that the store's total capacity has decreased, so that it will
+                    // account for it by making future segments smaller again.
+                    await _segmentsCompactedChannelWriter.WriteAsync(
+                        new SegmentsCompacted(CapacityChange: cleanup.CapacityChange));
                 }
             }
             finally
