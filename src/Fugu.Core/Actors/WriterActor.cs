@@ -10,7 +10,7 @@ public sealed class WriterActor
     private readonly ChannelWriter<ChangesWritten> _changesWrittenChannelWriter;
 
     private long _outputGeneration;
-    private SegmentBuilder? _segmentBuilder;
+    private SegmentWriter? _segmentWriter;
 
     public WriterActor(
         ChannelReader<ChangeSetAllocated> changeSetAllocatedChannelReader,
@@ -28,35 +28,44 @@ public sealed class WriterActor
         {
             var message = await _changeSetAllocatedChannelReader.ReadAsync();
 
-            if (_segmentBuilder is null || message.OutputSlab != _segmentBuilder.Segment.Slab)
+            if (_segmentWriter is null || message.OutputSlab != _segmentWriter.Segment.Slab)
             {
                 // Close out the previous segment, if any
-                if (_segmentBuilder is not null)
-                {
-                    await _segmentBuilder.CompleteAsync();
-                    _segmentBuilder = null;
-                }
-
+                await CloseOutputSegmentAsync();
                 _outputGeneration++;
             }
 
             // Start new segment if needed
-            _segmentBuilder ??= await SegmentBuilder.CreateAsync(message.OutputSlab, _outputGeneration, _outputGeneration);
+            _segmentWriter ??= await SegmentWriter.CreateAsync(message.OutputSlab, _outputGeneration, _outputGeneration);
 
-            var writtenPayloads = await _segmentBuilder.WriteChangeSetAsync(message.ChangeSet);
+            var coordinates = await _segmentWriter.WriteChangeSetAsync(message.ChangeSet);
 
             // Propagate changes downstream
             await _changesWrittenChannelWriter.WriteAsync(
                 new ChangesWritten(
                     Clock: message.Clock,
-                    OutputSegment: _segmentBuilder.Segment,
-                    Payloads: writtenPayloads,
-                    Tombstones: message.ChangeSet.Tombstones));
+                    OutputSegment: _segmentWriter.Segment,
+                    Payloads: coordinates.Payloads,
+                    Tombstones: coordinates.Tombstones));
         }
 
-        // TODO: Terminate current output segment, if any
+        // Terminate current output segment, if any
+        await CloseOutputSegmentAsync();
 
         // Propagate completion
         _changesWrittenChannelWriter.Complete();
+    }
+
+    private ValueTask CloseOutputSegmentAsync()
+    {
+        if (_segmentWriter is null)
+        {
+            return ValueTask.CompletedTask;
+        }
+
+        var writer = _segmentWriter;
+        _segmentWriter = null;
+
+        return writer.CompleteAsync();
     }
 }

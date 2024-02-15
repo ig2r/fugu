@@ -1,26 +1,50 @@
-﻿using System.Buffers;
+﻿using Fugu.Utils;
+using System.Buffers;
+using System.IO.Pipelines;
+using System.Runtime.CompilerServices;
 
 namespace Fugu.IO;
 
-public ref struct SegmentWriter
+public sealed class SegmentWriter
 {
-    private readonly IBufferWriter<byte> _bufferWriter;
+    private readonly Segment _segment;
+    private readonly PipeWriter _pipeWriter;
+    private long _offset;
 
-    public SegmentWriter(IBufferWriter<byte> bufferWriter)
+    private SegmentWriter(Segment segment, PipeWriter pipeWriter, long initialOffset)
     {
-        _bufferWriter = bufferWriter;
+        _segment = segment;
+        _pipeWriter = pipeWriter;
+        _offset = initialOffset;
     }
 
-    public long BytesWritten { get; private set; }
+    public Segment Segment => _segment;
 
-    public void WriteSegmentHeader(long minGeneration, long maxGeneration)
+    public static async ValueTask<SegmentWriter> CreateAsync(IWritableSlab outputSlab, long minGeneration, long maxGeneration)
     {
-        // TODO: Instead of acquiring a small chunk of memory from _bufferWriter in each call,
-        // ask for a bigger chunk and store it in a field, directing multiple writes into it.
-        // Downside is that we'll need to track how much data was already written and call
-        // Advance() when space in the current segment runs out, OR when done writing to the
-        // SegmentFormatter.
-        var span = _bufferWriter.GetSpan(StorageFormat.SegmentHeaderSize);
+        var segment = new Segment(minGeneration, maxGeneration, outputSlab);
+        var pipeWriter = PipeWriter.Create(outputSlab.Output);
+        var initialOffset = WriteSegmentHeader(pipeWriter, minGeneration, maxGeneration);
+        await pipeWriter.FlushAsync();
+
+        return new SegmentWriter(segment, pipeWriter, initialOffset);
+    }
+
+    public ValueTask CompleteAsync()
+    {
+        return _pipeWriter.CompleteAsync();
+    }
+
+    public async ValueTask<ChangeSetCoordinates> WriteChangeSetAsync(ChangeSet changeSet)
+    {
+        var changes = WriteChangeSet(changeSet);
+        await _pipeWriter.FlushAsync();
+        return changes;
+    }
+
+    private static long WriteSegmentHeader(IBufferWriter<byte> bufferWriter, long minGeneration, long maxGeneration)
+    {
+        var span = bufferWriter.GetSpan(StorageFormat.SegmentHeaderSize);
         var writer = new SpanWriter(span);
 
         writer.WriteInt64(0xDEADBEEF);              // Magic
@@ -29,47 +53,64 @@ public ref struct SegmentWriter
         writer.WriteInt64(minGeneration);
         writer.WriteInt64(maxGeneration);
 
-        _bufferWriter.Advance(StorageFormat.SegmentHeaderSize);
-        BytesWritten += StorageFormat.SegmentHeaderSize;
+        bufferWriter.Advance(StorageFormat.SegmentHeaderSize);
+        return StorageFormat.SegmentHeaderSize;
     }
 
-    public void WriteChangeSetHeader(int payloadCount, int tombstoneCount)
+    private ChangeSetCoordinates WriteChangeSet(ChangeSet changeSet)
     {
-        var span = _bufferWriter.GetSpan(StorageFormat.ChangeSetHeaderSize);
-        var writer = new SpanWriter(span);
+        var payloads = changeSet.Payloads.ToArray();
+        var tombstones = changeSet.Tombstones.ToArray();
 
-        writer.WriteByte(1);
-        writer.WriteInt32(payloadCount);
-        writer.WriteInt32(tombstoneCount);
+        var headerLength = Unsafe.SizeOf<int>() * (2 + 2 * changeSet.Payloads.Count + changeSet.Tombstones.Count);
 
-        _bufferWriter.Advance(StorageFormat.ChangeSetHeaderSize);
-        BytesWritten += StorageFormat.ChangeSetHeaderSize;
-    }
+        // The following code relies on PipeWriter implementing IBufferWriter<byte>
+        {
+            var span = _pipeWriter.GetSpan(headerLength);
 
-    public void WritePayloadHeader(ReadOnlySpan<byte> key, int valueLength)
-    {
-        var span = _bufferWriter.GetSpan(StorageFormat.PayloadHeaderPrefixSize);
-        var writer = new SpanWriter(span);
+            var spanWriter = new SpanWriter(span);
+            spanWriter.WriteInt32(changeSet.Payloads.Count);
+            spanWriter.WriteInt32(changeSet.Tombstones.Count);
 
-        writer.WriteInt32(key.Length);
-        writer.WriteInt32(valueLength);
-        _bufferWriter.Advance(StorageFormat.PayloadHeaderPrefixSize);
-        BytesWritten += StorageFormat.PayloadHeaderPrefixSize;
+            var payloadKeyLengths = payloads.Select(kvp => kvp.Key.Length).ToArray();
+            var tombstoneKeyLengths = tombstones.Select(tombstone => tombstone.Length).ToArray();
+            var payloadValueLengths = payloads.Select(kvp => kvp.Value.Length).ToArray();
 
-        _bufferWriter.Write(key);
-        BytesWritten += key.Length;
-    }
+            spanWriter.WriteInt32Array(payloadKeyLengths);
+            spanWriter.WriteInt32Array(tombstoneKeyLengths);
+            spanWriter.WriteInt32Array(payloadValueLengths);
 
-    public void WriteTombstone(ReadOnlySpan<byte> key)
-    {
-        var span = _bufferWriter.GetSpan(StorageFormat.TombstonePrefixSize);
-        var writer = new SpanWriter(span);
+            _pipeWriter.Advance(headerLength);
+            _offset += headerLength;
+        }
 
-        writer.WriteInt32(key.Length);
-        _bufferWriter.Advance(StorageFormat.TombstonePrefixSize);
-        BytesWritten += StorageFormat.TombstonePrefixSize;
+        var writtenPayloads = new List<KeyValuePair<byte[], SlabSubrange>>(capacity: payloads.Length);
 
-        _bufferWriter.Write(key);
-        BytesWritten += key.Length;
+        // Write keys
+        foreach (var payload in payloads)
+        {
+            _pipeWriter.Write(payload.Key);
+            _offset += payload.Key.Length;
+        }
+
+        foreach (var tombstone in tombstones)
+        {
+            _pipeWriter.Write(tombstone);
+            _offset += tombstone.Length;
+        }
+
+        // Write payload values
+        foreach (var payload in payloads)
+        {
+            _pipeWriter.Write(payload.Value.Span);
+
+            writtenPayloads.Add(KeyValuePair.Create(payload.Key, new SlabSubrange(_offset, payload.Value.Length)));
+            _offset += payload.Value.Length;
+        }
+
+        // TODO: Write actual checksum
+        //_pipeWriter.Write(new byte[sizeof(long)]);
+
+        return new ChangeSetCoordinates(writtenPayloads, tombstones);
     }
 }

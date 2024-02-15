@@ -39,4 +39,17 @@ public ref struct SpanWriter
         BinaryPrimitives.WriteInt64LittleEndian(_span, value);
         _span = _span.Slice(Unsafe.SizeOf<long>());
     }
+
+    public void WriteInt32Array(ReadOnlySpan<int> values)
+    {
+        var valuesAsBytes = MemoryMarshal.AsBytes(values);
+        valuesAsBytes.CopyTo(_span);
+
+        if (!BitConverter.IsLittleEndian)
+        {
+            throw new NotImplementedException();
+        }
+
+        _span = _span.Slice(valuesAsBytes.Length);
+    }
 }

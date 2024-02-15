@@ -103,7 +103,7 @@ public sealed class KeyValueStore : IAsyncDisposable
             oldestObservableSnapshotChangedChannel.Writer);
 
         // Load existing data
-        var bootstrapResult = await Bootstrapper.LoadFromStorageAsync(storage, changesWrittenChannel);
+        var bootstrapResult = await Bootstrapper.InitializeStoreAsync(storage, changesWrittenChannel);
 
         // Create actors involved in writes and balancing
         var allocationActor = new AllocationActor(
