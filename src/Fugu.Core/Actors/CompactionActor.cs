@@ -179,7 +179,7 @@ public sealed class CompactionActor
     {
         var minGeneration = sourceSegments.Min(s => s.MinGeneration);
         var maxGeneration = sourceSegments.Max(s => s.MaxGeneration);
-        var segmentBuilder = await SegmentBuilder.CreateAsync(outputSlab, minGeneration, maxGeneration);
+        var segmentWriter = await SegmentWriter.CreateAsync(outputSlab, minGeneration, maxGeneration);
 
         // Tracks payloads and tombstones we've already written to the output segment.
         var compactedPayloads = new List<KeyValuePair<byte[], SlabSubrange>>();
@@ -187,7 +187,7 @@ public sealed class CompactionActor
 
         foreach (var sourceSegment in sourceSegments)
         {
-            var parser = await SegmentParser.CreateAsync(sourceSegment.Slab);
+            var segmentReader = await SegmentReader.CreateAsync(sourceSegment.Slab);
 
             // For now, we'll create one change set per source segment. Using the ChangeSet
             // type means we hold the source payload values in memory, though -- in the future,
@@ -195,7 +195,7 @@ public sealed class CompactionActor
             // output using vectored I/O when done?
             var toWrite = new ChangeSet();
 
-            await foreach (var changeSet in parser.ReadChangeSetsAsync())
+            await foreach (var changeSet in segmentReader.ReadChangeSetsAsync())
             {
                 foreach (var payload in changeSet.Payloads)
                 {
@@ -235,18 +235,18 @@ public sealed class CompactionActor
 
             if (toWrite.Payloads.Count > 0 || toWrite.Tombstones.Count > 0)
             {
-                var coordinates = await segmentBuilder.WriteChangeSetAsync(toWrite);
-                compactedPayloads.AddRange(coordinates);
+                var coordinates = await segmentWriter.WriteChangeSetAsync(toWrite);
+                compactedPayloads.AddRange(coordinates.Payloads);
             }
         }
 
-        await segmentBuilder.CompleteAsync();
+        await segmentWriter.CompleteAsync();
 
         // Act like we wrote one big change set. Caller doesn't care.
         var changes = new ChangeSetCoordinates(
             compactedPayloads,
             compactedTombstones.ToArray());
 
-        return (segmentBuilder.Segment, changes);
+        return (segmentWriter.Segment, changes);
     }
 }
