@@ -36,6 +36,20 @@ public sealed class AllocationActor
         _totalBytes = totalBytes;
     }
 
+    public async Task CompleteAsync()
+    {
+        await _semaphore.WaitAsync();
+
+        try
+        {
+            _changeSetAllocatedChannelWriter.Complete();
+        }
+        finally
+        {
+            _semaphore.Release();
+        }
+    }
+
     public async Task RunAsync()
     {
         while (await _segmentsCompactedChannelReader.WaitToReadAsync())
@@ -57,9 +71,6 @@ public sealed class AllocationActor
                 _semaphore.Release();
             }
         }
-
-        // Propagate completion
-        _changeSetAllocatedChannelWriter.Complete();
     }
 
     public async ValueTask<VectorClock> EnqueueChangeSetAsync(ChangeSet changeSet)

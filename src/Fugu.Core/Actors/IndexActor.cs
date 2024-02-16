@@ -38,7 +38,6 @@ public sealed partial class IndexActor
 
         // Propagate completion
         _indexUpdatedChannelWriter.Complete();
-        _segmentStatsUpdatedChannelWriter.Complete();
     }
 
     private async Task ProcessChangesWrittenMessagesAsync()
@@ -136,6 +135,10 @@ public sealed partial class IndexActor
                 _semaphore.Release();
             }
         }
+
+        // Propagate completion towards compaction actor. By the time this happens, the actor loop processing
+        // CompactionWritten messages will still be running.
+        _segmentStatsUpdatedChannelWriter.Complete();
     }
 
     private async Task ProcessCompactionWrittenMessagesAsync()
@@ -196,7 +199,13 @@ public sealed partial class IndexActor
 
                 if (!stats.IsEmpty)
                 {
-                    await _segmentStatsUpdatedChannelWriter.WriteAsync(
+                    // The following write may not succeed when the store is shutting down because the
+                    // ChangesWritten processing loop will complete this channel after when it exits.
+                    // We can safely ignore this scenario as we're shutting down anyways.
+                    // In the regular case, we rely on the fact that the SegmentStatsUpdated channel is
+                    // configured as a bounded channel with "latest-wins" replacement strategy, so even if
+                    // there is an unread element still in the channel, this write is guaranteed to replace it.
+                    _segmentStatsUpdatedChannelWriter.TryWrite(
                         new SegmentStatsUpdated(
                             Clock: _clock,
                             Stats: stats,
