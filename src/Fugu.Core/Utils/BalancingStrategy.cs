@@ -5,12 +5,15 @@
 /// </summary>
 public sealed class BalancingStrategy
 {
-    // Coefficient, also the size of the first segment.
     private readonly long _coefficient;
-
-    // Common ratio, indicates by how much each added segment should be bigger than the previous one.
     private readonly double _growthFactor;
 
+    /// <summary>
+    /// Initializes a new instance of the BalancingStrategy class.
+    /// </summary>
+    /// <param name="coefficient">Coefficient of the geometric series, also the size of the first segment in bytes.</param>
+    /// <param name="growthFactor">Indicates by how much each added segment should be bigger than the previous one.</param>
+    /// <exception cref="ArgumentOutOfRangeException">A parameter was invalid.</exception>
     public BalancingStrategy(long coefficient, double growthFactor)
     {
         if (coefficient <= 0)
