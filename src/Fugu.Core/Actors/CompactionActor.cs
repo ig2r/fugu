@@ -10,6 +10,7 @@ public sealed class CompactionActor
     private readonly SemaphoreSlim _semaphore = new(1);
 
     private readonly IBackingStorage _storage;
+    private readonly BalancingStrategy _balancingStrategy;
     private readonly ChannelReader<SegmentStatsUpdated> _segmentStatsUpdatedChannelReader;
     private readonly ChannelReader<OldestObservableSnapshotChanged> _oldestObservableSnapshotChangedChannelReader;
     private readonly ChannelWriter<CompactionWritten> _compactionWrittenChannelWriter;
@@ -19,12 +20,14 @@ public sealed class CompactionActor
 
     public CompactionActor(
         IBackingStorage storage,
+        BalancingStrategy balancingStrategy,
         ChannelReader<SegmentStatsUpdated> segmentStatsUpdatedChannelReader,
         ChannelReader<OldestObservableSnapshotChanged> oldestObservableSnapshotChangedChannelReader,
         ChannelWriter<CompactionWritten> compactionWrittenChannelWriter,
         ChannelWriter<SegmentsCompacted> segmentsCompactedChannelWriter)
     {
         _storage = storage;
+        _balancingStrategy = balancingStrategy;
         _segmentStatsUpdatedChannelReader = segmentStatsUpdatedChannelReader;
         _oldestObservableSnapshotChangedChannelReader = oldestObservableSnapshotChangedChannelReader;
         _compactionWrittenChannelWriter = compactionWrittenChannelWriter;
@@ -59,21 +62,12 @@ public sealed class CompactionActor
 
             try
             {
-                // Geometric series characterized by two parameters a and r:
-                const double a = 100;       // Coefficient, also the size of slab #0
-                const double r = 1.5;       // Common ratio, indicates by how much each added slab should be bigger than the last
-
-                // Given the current number n of non-output segments in the store, calculate idealized capacity of the store as the
-                // cumulative sum of an n-element (a, r) geometric series:
-                var n = message.Stats.Count;
-                var capacity = a * (1 - Math.Pow(r, n)) / (1 - r);
-
-                // Calculate actual sum of "live" bytes:
+                // Given the current number n of non-output segments in the store, calculate idealized capacity of the store.
+                // Then derive the utilization ratio of idealized capacity vs. actual total "live" bytes across all non-output
+                // segments. If this ratio drops too far below 1.0, the store is using too many segments for the amount of payload
+                // data it holds and should be compacted to flush out stale data.
+                var capacity = _balancingStrategy.GetIdealizedCapacity(message.Stats.Count);
                 var totalLiveBytes = message.Stats.Sum(s => s.Value.LiveBytes);
-
-                // We define utilization as the ratio of "live" bytes to idealized capacity given the current number of non-output
-                // segments. If utilization drops too far below 1.0, this indicates that the store is using too many segments for
-                // the amount of payload data it holds, and should be compacted to flush out stale data.
                 var utilization = totalLiveBytes / capacity;
 
                 // Setting the utilization threshold at 0.5 means that up to 50% of usable space within segments can be taken up
@@ -240,7 +234,7 @@ public sealed class CompactionActor
         // Act like we wrote one big change set. Caller doesn't care.
         var changes = new ChangeSetCoordinates(
             compactedPayloads,
-            compactedTombstones.ToArray());
+            [.. compactedTombstones]);
 
         return (segmentWriter.Segment, changes);
     }
