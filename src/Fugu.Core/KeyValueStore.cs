@@ -1,6 +1,7 @@
 ﻿using Fugu.Actors;
 using Fugu.Channels;
 using Fugu.IO;
+using Fugu.Utils;
 using System.Threading.Channels;
 
 namespace Fugu;
@@ -104,9 +105,12 @@ public sealed class KeyValueStore : IAsyncDisposable
         // Load existing data
         var bootstrapResult = await Bootstrapper.InitializeStoreAsync(storage, changesWrittenChannel);
 
+        var balancingStrategy = new BalancingStrategy(100, 1.5);
+
         // Create actors involved in writes and balancing
         var allocationActor = new AllocationActor(
             storage,
+            balancingStrategy,
             segmentsCompactedChannel.Reader,
             changeSetAllocatedChannel.Writer,
             bootstrapResult.TotalBytes);
@@ -118,6 +122,7 @@ public sealed class KeyValueStore : IAsyncDisposable
 
         var compactionActor = new CompactionActor(
             storage,
+            balancingStrategy,
             segmentStatsUpdatedChannel.Reader,
             oldestObservableSnapshotChangedChannel.Reader,
             compactionWrittenChannel.Writer,
