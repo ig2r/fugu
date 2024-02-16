@@ -114,7 +114,6 @@ public sealed partial class IndexActor
 
                 _index = indexBuilder.ToImmutable();
                 var stats = _statsTracker.ToImmutable();
-                EnsureIndexAndStatsConsistent(_index, stats);
 
                 await _indexUpdatedChannelWriter.WriteAsync(
                     new IndexUpdated(
@@ -189,7 +188,6 @@ public sealed partial class IndexActor
 
                 _index = indexBuilder.ToImmutable();
                 var stats = _statsTracker.ToImmutable();
-                EnsureIndexAndStatsConsistent(_index, stats);
 
                 await _indexUpdatedChannelWriter.WriteAsync(
                     new IndexUpdated(
@@ -216,47 +214,6 @@ public sealed partial class IndexActor
             {
                 _semaphore.Release();
             }
-        }
-    }
-
-    private static void EnsureIndexAndStatsConsistent(
-        ImmutableDictionary<byte[], IndexEntry> index,
-        ImmutableSortedDictionary<Segment, SegmentStats> stats)
-    {
-        // Check 1: every generation in stats covered exactly once
-        if (stats.Count > 0)
-        {
-            var maxGeneration = stats.Keys.Max(s => s.MaxGeneration);
-            var generationOccurrences = new int[maxGeneration];
-
-            foreach (var segment in stats.Keys)
-            {
-                for (var gen = segment.MinGeneration; gen <= segment.MaxGeneration; gen++)
-                {
-                    generationOccurrences[gen - 1]++;
-                }
-            }
-
-            if (generationOccurrences.Any(g => g != 1))
-            {
-                throw new InvalidOperationException("Generation occurs an incorrect number of times in coverage counts.");
-            }
-        }
-
-        // Check 2: index can contain at most one segment not present in stats (i.e., the current
-        // output segment)
-        var segmentsFromIndex = new HashSet<Segment>();
-        foreach (var indexEntry in index.Values)
-        {
-            segmentsFromIndex.Add(indexEntry.Segment);
-        }
-
-        var segmentsFromStats = stats.Keys.ToHashSet();
-        segmentsFromIndex.ExceptWith(segmentsFromStats);
-
-        if (segmentsFromIndex.Count > 1)
-        {
-            throw new InvalidOperationException("There is more than one segment in index that is unaccounted for in stats.");
         }
     }
 }
