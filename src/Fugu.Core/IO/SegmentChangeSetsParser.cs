@@ -1,6 +1,7 @@
 ﻿using Fugu.Utils;
 using System.Buffers;
 using System.Buffers.Binary;
+using System.IO.Hashing;
 using System.Runtime.InteropServices;
 
 namespace Fugu.IO;
@@ -119,6 +120,7 @@ public static class SegmentChangeSetsParser
                             sequenceReader.Advance(l);
 
                             state.PayloadKeys.Add(key);
+                            state.Hash64.Append(key);
                         }
 
                         // Read & unpack tombstones
@@ -129,6 +131,7 @@ public static class SegmentChangeSetsParser
                             sequenceReader.Advance(l);
 
                             state.Tombstones.Add(key);
+                            state.Hash64.Append(key);
                         }
 
                         state.CurrentToken = ParseToken.Values;
@@ -152,7 +155,11 @@ public static class SegmentChangeSetsParser
                                     Length = valueLength,
                                 });
 
+                            var value = new byte[valueLength];
+                            sequenceReader.TryCopyTo(value);
                             sequenceReader.Advance(valueLength);
+
+                            state.Hash64.Append(value);
                         }
 
                         state.CurrentToken = ParseToken.Checksum;
@@ -161,6 +168,25 @@ public static class SegmentChangeSetsParser
 
                 case ParseToken.Checksum:
                     {
+                        Span<byte> checksumBytes = stackalloc byte[sizeof(ulong)];
+                        if (!sequenceReader.TryCopyTo(checksumBytes))
+                        {
+                            return (sequenceReader.Position, buffer.End);
+                        }
+
+                        sequenceReader.Advance(checksumBytes.Length);
+
+                        var actualChecksum = BinaryPrimitives.ReadUInt64LittleEndian(checksumBytes);
+                        var expectedChecksum = state.Hash64.GetCurrentHashAsUInt64();
+
+                        // Signal if actual/expected checksums don't match, indicating that this change set has
+                        // been corrupted and parsing cannot continue on this segment.
+                        if (actualChecksum != expectedChecksum)
+                        {
+                            state.CurrentToken = ParseToken.FailedChecksum;
+                            return (sequenceReader.Position, buffer.End);
+                        }
+
                         state.CurrentToken = ParseToken.Done;
                         break;
                     }
@@ -185,6 +211,7 @@ public static class SegmentChangeSetsParser
         Keys,
         Values,
         Checksum,
+        FailedChecksum,
         Done,
     }
 
@@ -200,5 +227,6 @@ public static class SegmentChangeSetsParser
         public List<byte[]> PayloadKeys { get; set; }
         public List<SlabSubrange> PayloadValues { get; set; }
         public List<byte[]> Tombstones { get; set; }
+        public readonly XxHash64 Hash64 { get; init; }
     }
 }

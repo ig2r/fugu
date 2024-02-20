@@ -1,5 +1,6 @@
 ﻿using Fugu.Utils;
 using System.Buffers;
+using System.IO.Hashing;
 using System.IO.Pipelines;
 
 namespace Fugu.IO;
@@ -36,6 +37,7 @@ public sealed class SegmentReader
         var state = new SegmentChangeSetsParser.ParseState
         {
             CurrentToken = SegmentChangeSetsParser.ParseToken.Start,
+            Hash64 = new XxHash64(_segment.MinGeneration),
         };
 
         while (true)
@@ -50,6 +52,11 @@ public sealed class SegmentReader
 
             pipeReader.AdvanceTo(consumed, examined);
 
+            if (state.CurrentToken == SegmentChangeSetsParser.ParseToken.FailedChecksum)
+            {
+                break;
+            }
+
             if (state.CurrentToken == SegmentChangeSetsParser.ParseToken.Done)
             {
                 // Yield changes to caller
@@ -63,6 +70,7 @@ public sealed class SegmentReader
                 state = new SegmentChangeSetsParser.ParseState
                 {
                     CurrentToken = SegmentChangeSetsParser.ParseToken.Start,
+                    Hash64 = state.Hash64,
                 };
             }
 

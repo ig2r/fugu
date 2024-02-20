@@ -49,4 +49,27 @@ public class KeyValueStoreTests
         var retrievedValue = await snapshot.ReadAsync("foo"u8);
         Assert.Equal("Initial value", Encoding.UTF8.GetString(retrievedValue.ToArray()));
     }
+
+    [Fact]
+    public async Task CreateAsync_SeesDataFromPreviousStoreInstance()
+    {
+        var storage = new InMemoryStorage();
+
+        // Set value for "foo"
+        {
+            await using var store = await KeyValueStore.CreateAsync(storage);
+            await store.SaveAsync(new()
+            {
+                ["foo"u8] = Encoding.UTF8.GetBytes("bar"),
+            });
+        }
+
+        // Read back value for "foo"
+        {
+            await using var store = await KeyValueStore.CreateAsync(storage);
+            using var snapshot = await store.GetSnapshotAsync();
+            var retrievedValue = await snapshot.ReadAsync("foo"u8);
+            Assert.Equal("bar", Encoding.UTF8.GetString(retrievedValue.ToArray()));
+        }
+    }
 }

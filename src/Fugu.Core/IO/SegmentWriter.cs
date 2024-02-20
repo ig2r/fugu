@@ -1,5 +1,7 @@
 ﻿using Fugu.Utils;
 using System.Buffers;
+using System.Buffers.Binary;
+using System.IO.Hashing;
 using System.IO.Pipelines;
 using System.Runtime.CompilerServices;
 
@@ -9,6 +11,7 @@ public sealed class SegmentWriter
 {
     private readonly Segment _segment;
     private readonly PipeWriter _pipeWriter;
+    private readonly XxHash64 _hash64;
     private long _offset;
 
     private SegmentWriter(Segment segment, PipeWriter pipeWriter, long initialOffset)
@@ -16,6 +19,8 @@ public sealed class SegmentWriter
         _segment = segment;
         _pipeWriter = pipeWriter;
         _offset = initialOffset;
+
+        _hash64 = new XxHash64(_segment.MinGeneration);
     }
 
     public Segment Segment => _segment;
@@ -90,12 +95,16 @@ public sealed class SegmentWriter
         foreach (var payload in payloads)
         {
             _pipeWriter.Write(payload.Key);
+            _hash64.Append(payload.Key);
+
             _offset += payload.Key.Length;
         }
 
         foreach (var tombstone in tombstones)
         {
             _pipeWriter.Write(tombstone);
+            _hash64.Append(tombstone);
+
             _offset += tombstone.Length;
         }
 
@@ -103,13 +112,17 @@ public sealed class SegmentWriter
         foreach (var payload in payloads)
         {
             _pipeWriter.Write(payload.Value.Span);
+            _hash64.Append(payload.Value.Span);
 
             writtenPayloads.Add(KeyValuePair.Create(payload.Key, new SlabSubrange(_offset, payload.Value.Length)));
             _offset += payload.Value.Length;
         }
 
-        // TODO: Write actual checksum
-        //_pipeWriter.Write(new byte[sizeof(long)]);
+        // Write actual checksum
+        var checksum = _hash64.GetCurrentHashAsUInt64();
+        Span<byte> checksumBytes = stackalloc byte[sizeof(ulong)];
+        BinaryPrimitives.WriteUInt64LittleEndian(checksumBytes, checksum);
+        _pipeWriter.Write(checksumBytes);
 
         return new ChangeSetCoordinates(writtenPayloads, tombstones);
     }
