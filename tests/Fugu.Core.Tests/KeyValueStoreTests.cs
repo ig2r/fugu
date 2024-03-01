@@ -13,17 +13,22 @@ public class KeyValueStoreTests
         var storage = new InMemoryStorage();
         await using var store = await KeyValueStore.CreateAsync(storage);
 
-        var changeSet = new ChangeSet
+        await store.SaveAsync(new ChangeSet
         {
             ["foo"u8] = Encoding.UTF8.GetBytes("Hello, world"),
-        };
+        });
 
-        await store.SaveAsync(changeSet);
+        await store.SaveAsync(new ChangeSet
+        {
+            ["bar"u8] = Encoding.UTF8.GetBytes("Still works"),
+        });
 
         using var snapshot = await store.GetSnapshotAsync();
-        var retrievedValue = await snapshot.ReadAsync("foo"u8);
+        var retrievedFooValue = await snapshot.ReadAsync("foo"u8);
+        var retrievedBarValue = await snapshot.ReadAsync("bar"u8);
 
-        Assert.Equal("Hello, world", Encoding.UTF8.GetString(retrievedValue.ToArray()));
+        Assert.Equal("Hello, world", Encoding.UTF8.GetString(retrievedFooValue.ToArray()));
+        Assert.Equal("Still works", Encoding.UTF8.GetString(retrievedBarValue.ToArray()));
     }
 
     [Fact]

@@ -199,21 +199,20 @@ public sealed class CompactionActor
                     }
                 }
 
-                foreach (var tombstone in changeSet.Tombstones)
+                // Only bother with tombstones if the compacted range doesn't begin at the very first generation.
+                // TODO: We will no longer need this check once we look at Bloom filters to detect potential
+                // payloads for this key in previous segments.
+                if (minGeneration > 1)
                 {
-                    // TODO: Checking index isn't enough; also check Bloom filters of preceding segments
-                    // if any of those might contain a payload for that key. Skip if Bloom filters show
-                    // that no preceding segment has that key.
-                    // For now, we can only skip a tombstone if there's an active payload in the index
-                    // that supersedes it.
-                    if (!index.ContainsKey(tombstone) &&
-                        !compactedTombstones.Contains(tombstone))
+                    foreach (var tombstone in changeSet.Tombstones)
                     {
-                        // Special case: if the compacted range starts at the very beginning, no need to
-                        // bring along tombstones.
-                        // TODO: Once we scan previous segments' Bloom filters for this key, this special
-                        // case will go away organically.
-                        if (minGeneration > 1)
+                        // TODO: Checking index isn't enough; also check Bloom filters of preceding segments
+                        // if any of those might contain a payload for that key. Skip if Bloom filters show
+                        // that no preceding segment has that key.
+                        // For now, we can only skip a tombstone if there's an active payload in the index
+                        // that supersedes it.
+                        if (!index.ContainsKey(tombstone) &&
+                            !compactedTombstones.Contains(tombstone))
                         {
                             toWrite.Remove(tombstone);
                             compactedTombstones.Add(tombstone);

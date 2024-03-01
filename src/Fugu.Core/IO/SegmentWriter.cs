@@ -67,7 +67,7 @@ public sealed class SegmentWriter
         var payloads = changeSet.Payloads.ToArray();
         var tombstones = changeSet.Tombstones.ToArray();
 
-        var headerLength = Unsafe.SizeOf<int>() * (2 + 2 * changeSet.Payloads.Count + changeSet.Tombstones.Count);
+        var headerLength = Unsafe.SizeOf<int>() * (2 + (2 * changeSet.Payloads.Count) + changeSet.Tombstones.Count);
 
         // The following code relies on PipeWriter implementing IBufferWriter<byte>
         {
@@ -122,7 +122,9 @@ public sealed class SegmentWriter
         var checksum = _hash64.GetCurrentHashAsUInt64();
         Span<byte> checksumBytes = stackalloc byte[sizeof(ulong)];
         BinaryPrimitives.WriteUInt64LittleEndian(checksumBytes, checksum);
+
         _pipeWriter.Write(checksumBytes);
+        _offset += checksumBytes.Length;
 
         return new ChangeSetCoordinates(writtenPayloads, tombstones);
     }
