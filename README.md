@@ -112,6 +112,6 @@ Data within each segment is stored in a format that is designed to be reasonably
   Payload value lengths   : uint32[]
   Payload keys            : byte[]
   Tombstone keys          : byte[]
-  Paylaod values          : byte[]
+  Payload values          : byte[]
   Running checksum        : uint64
 ```

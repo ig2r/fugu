@@ -11,28 +11,28 @@ public static class Bootstrapper
         Channel<ChangesWritten> changesWrittenChannel)
     {
         var slabs = await storage.GetAllSlabsAsync();
-        var segmentReaders = new List<SegmentReader>(capacity: slabs.Count);
+        var segmentReaders = new Dictionary<ISegmentMetadata, SegmentReader>(capacity: slabs.Count);
 
         foreach (var slab in slabs)
         {
             var reader = await SegmentReader.CreateAsync(slab);
-            segmentReaders.Add(reader);
+            segmentReaders[reader.Segment] = reader;
         }
 
         // Order segments, decide on which ones to load & which ones to skip.
-        // TODO: The current implementation assumes that generations will never overlap, hence comparing MinGeneration
-        // is sufficient to establish proper ordering. This assumption will NO LONGER BE VALID once we implement compaction.
-        segmentReaders.Sort((x, y) => Comparer<long>.Default.Compare(x.Segment.MinGeneration, y.Segment.MinGeneration));
+        // TODO: Discard skipped segments.
+        var segmentsToLoad = BootstrapSegmentOrderer.GetBootstrapOrder(segmentReaders.Keys);
 
-        long maxGeneration = segmentReaders.Count > 0
-            ? segmentReaders.Max(s => s.Segment.MaxGeneration)
+        long maxGeneration = segmentsToLoad.Count > 0
+            ? segmentsToLoad.Max(s => s.MaxGeneration)
             : 0;
 
         long totalBytes = 0;
 
         // For all change sets across all segments in order, feed these change sets to index actor.
-        foreach (var reader in segmentReaders)
+        foreach (var segmentMetadata in segmentsToLoad)
         {
+            var reader = segmentReaders[segmentMetadata];
             await foreach (var changes in reader.ReadChangeSetsAsync())
             {
                 totalBytes += ChangeSetUtils.GetDataBytes(changes);
