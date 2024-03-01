@@ -89,3 +89,29 @@ As with any log-structured persistence scheme, Fugu needs to implement a compact
 
 - As restoring the invariant is thus mainly a matter of bringing the actual number of segments down to $n$, the compaction algorithm will identify two or more adjacent segments and merge them into one. Note that the current output segment will never be included in a compaction.
 - During index updates, the index actor will maintain statistics on the amount of "live" and "stale" data per segment. This information will be a primary input for selecting compaction candidates, as we aim to flush out as much stale data as possible during the compacting merge.
+
+## Segment serialization format
+
+Data within each segment is stored in a format that is designed to be reasonably simple and efficient to parse and write using vectorized I/O. Integers are generally stored in little-endian order.
+
+```
+<Segment> ::= <SegmentHeader> <ChangeSet>* (EOF)
+
+<SegmentHeader> ::=
+  Magic                   : byte[8]
+  Format version (major)  : uint16
+  Format version (minor)  : uint16
+  Min segment generation  : uint64
+  Max segment generation  : uint64
+
+<ChangeSet> ::=
+  Payload count           : uint32
+  Tombstone count         : uint32
+  Payload key lengths     : uint32[]
+  Tombstone key lengths   : uint32[]
+  Payload value lengths   : uint32[]
+  Payload keys            : byte[]
+  Tombstone keys          : byte[]
+  Paylaod values          : byte[]
+  Running checksum        : uint64
+```
