@@ -20,9 +20,19 @@ public static class Bootstrapper
         }
 
         // Order segments, decide on which ones to load & which ones to skip.
-        // TODO: Discard skipped segments.
         var segmentsToLoad = BootstrapSegmentOrderer.GetBootstrapOrder(segmentReaders.Keys);
 
+        // Any segments that don't appear in segmentsToLoad are not needed, hence remove them.
+        var segmentsToDiscard = segmentReaders.Keys.Except(segmentsToLoad);
+        foreach (var segmentMetadata in segmentsToDiscard)
+        {
+            var segment = segmentReaders[segmentMetadata].Segment;
+            segmentReaders.Remove(segmentMetadata);
+
+            await storage.RemoveSlabAsync(segment.Slab);
+        }
+
+        // Determine upper bound of generation range we'll load.
         long maxGeneration = segmentsToLoad.Count > 0
             ? segmentsToLoad.Max(s => s.MaxGeneration)
             : 0;
