@@ -52,8 +52,14 @@ public sealed class CompactionActor
         {
             var message = await _segmentStatsUpdatedChannelReader.ReadAsync();
 
-            // Discard messages while we're still waiting for the effects of a previous compaction to become observable
+            // Discard messages while we're still waiting for the effects of a previous compaction to become observable.
             if (message.Clock.Compaction < compactionClockThreshold)
+            {
+                continue;
+            }
+
+            // Cannot compact if there is only a single completed segment.
+            if (message.Stats.Count < 2)
             {
                 continue;
             }
@@ -66,9 +72,9 @@ public sealed class CompactionActor
                 // Then derive the utilization ratio of idealized capacity vs. actual total "live" bytes across all non-output
                 // segments. If this ratio drops too far below 1.0, the store is using too many segments for the amount of payload
                 // data it holds and should be compacted to flush out stale data.
-                var capacity = _balancingStrategy.GetIdealizedCapacity(message.Stats.Count);
-                var totalLiveBytes = message.Stats.Sum(s => s.Value.LiveBytes);
-                var utilization = totalLiveBytes / capacity;
+                float capacity = _balancingStrategy.GetIdealizedCapacity(message.Stats.Count);
+                float totalLiveBytes = message.Stats.Sum(s => s.Value.LiveBytes);
+                float utilization = totalLiveBytes / capacity;
 
                 // Setting the utilization threshold at 0.5 means that up to 50% of usable space within segments can be taken up
                 // by stale data before a compaction is triggered. Choosing a higher threshold will allow less wasted space, at the
@@ -85,9 +91,30 @@ public sealed class CompactionActor
                     // The ratio of both numbers yields the "efficiency" of compacting a specific candidate range, i.e., by how much
                     // each copied byte will be able to improve the utilization figure.
 
-                    // TODO: Be smart about this, for now we always choose the first two segments as compaction inputs.
+                    var statsArray = message.Stats.ToArray();
+                    var bestRatio = 0f;
+                    int bestIndex = 0;
+                    int bestCount = 2;
 
-                    var sourceStats = message.Stats.Take(2).ToArray();
+                    for (var i = 0; i < statsArray.Length - 1; i++)
+                    {
+                        for (var c = 2; c <= 3 && i + c <= statsArray.Length; c++)
+                        {
+                            var (totalBytes, liveBytes) = statsArray.Skip(i).Take(c).Aggregate(
+                                (TotalBytes: 0f, LiveBytes: 0f),
+                                (acc, x) => (x.Value.TotalBytes + acc.TotalBytes, x.Value.LiveBytes + acc.LiveBytes));
+
+                            var ratio = totalBytes / (liveBytes + 1);
+                            if (ratio > bestRatio)
+                            {
+                                bestRatio = ratio;
+                                bestIndex = i;
+                                bestCount = c;
+                            }
+                        }
+                    }
+
+                    var sourceStats = message.Stats.Skip(bestIndex).Take(bestCount).ToArray();
 
                     compactionClockThreshold++;
 
