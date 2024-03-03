@@ -52,8 +52,14 @@ public sealed class CompactionActor
         {
             var message = await _segmentStatsUpdatedChannelReader.ReadAsync();
 
-            // Discard messages while we're still waiting for the effects of a previous compaction to become observable
+            // Discard messages while we're still waiting for the effects of a previous compaction to become observable.
             if (message.Clock.Compaction < compactionClockThreshold)
+            {
+                continue;
+            }
+
+            // Cannot compact if there is only a single completed segment.
+            if (message.Stats.Count < 2)
             {
                 continue;
             }
@@ -66,9 +72,9 @@ public sealed class CompactionActor
                 // Then derive the utilization ratio of idealized capacity vs. actual total "live" bytes across all non-output
                 // segments. If this ratio drops too far below 1.0, the store is using too many segments for the amount of payload
                 // data it holds and should be compacted to flush out stale data.
-                var capacity = _balancingStrategy.GetIdealizedCapacity(message.Stats.Count);
-                var totalLiveBytes = message.Stats.Sum(s => s.Value.LiveBytes);
-                var utilization = totalLiveBytes / capacity;
+                float capacity = _balancingStrategy.GetIdealizedCapacity(message.Stats.Count);
+                float totalLiveBytes = message.Stats.Sum(s => s.Value.LiveBytes);
+                float utilization = totalLiveBytes / capacity;
 
                 // Setting the utilization threshold at 0.5 means that up to 50% of usable space within segments can be taken up
                 // by stale data before a compaction is triggered. Choosing a higher threshold will allow less wasted space, at the
@@ -77,17 +83,9 @@ public sealed class CompactionActor
                 if (utilization < 0.5)
                 {
                     // We need to compact. Identify a suitable range of source segments.
-                    // For each candidate range of segments, we are interested in two numbers:
-                    // - By how much compacting these segments will reduce the idealized capacity; this is dependent only on n.
-                    // - How much data we will likely need to copy during the compaction. Live bytes in source segments for sure;
-                    //   potentially some "stale" bytes as well if they represent tombstones for values that may still exist in
-                    //   previous segments.
-                    // The ratio of both numbers yields the "efficiency" of compacting a specific candidate range, i.e., by how much
-                    // each copied byte will be able to improve the utilization figure.
-
-                    // TODO: Be smart about this, for now we always choose the first two segments as compaction inputs.
-
-                    var sourceStats = message.Stats.Take(2).ToArray();
+                    var statsArray = message.Stats.Values.ToArray();
+                    var (start, length) = ChooseCompactionSourceRange(statsArray);
+                    var sourceStats = message.Stats.Skip(start).Take(length).ToArray();
 
                     compactionClockThreshold++;
 
@@ -159,6 +157,43 @@ public sealed class CompactionActor
                 _semaphore.Release();
             }
         }
+    }
+
+    /// <summary>
+    /// Picks the most favorable sub-range of segments for compaction.
+    /// </summary>
+    /// <param name="stats">Segment usage stats, provided by IndexActor.</param>
+    /// <returns>Start and length of a range of segments to compact.</returns>
+    private static (int Start, int Length) ChooseCompactionSourceRange(SegmentStats[] stats)
+    {
+        // Look for the 2- or 3-element range of segments that has the most skewed ratio between "live" vs.
+        // "stale" bytes, that is, in which the amount of stale bytes that can be stripped away per every
+        // live byte copied is maximized.
+
+        var maxRatio = 0f;
+        int start = 0;
+        int length = 2;
+
+        for (var i = 0; i < stats.Length - 1; i++)
+        {
+            for (var k = 2; k <= 3 && i + k <= stats.Length; k++)
+            {
+                var (totalBytes, staleBytes) = stats.Skip(i).Take(k).Aggregate(
+                    (TotalBytes: 0f, StaleBytes: 0f),
+                    (acc, x) => (acc.TotalBytes + x.TotalBytes, acc.StaleBytes + x.StaleBytes));
+
+                // Apply Laplacian +1 smoothing to avoid division by zero.
+                var ratio = staleBytes / (totalBytes + 1);
+                if (ratio > maxRatio)
+                {
+                    maxRatio = ratio;
+                    start = i;
+                    length = k;
+                }
+            }
+        }
+
+        return (start, length);
     }
 
     private static async ValueTask<(Segment Segment, ChangeSetCoordinates Changes)> CompactSegmentsAsync(
