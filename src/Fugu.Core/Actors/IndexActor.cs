@@ -15,7 +15,8 @@ public sealed partial class IndexActor
     private readonly ChannelWriter<SegmentStatsUpdated> _segmentStatsUpdatedChannelWriter;
 
     private VectorClock _clock = default;
-    private ImmutableDictionary<byte[], IndexEntry> _index = ImmutableDictionary.Create<byte[], IndexEntry>(ByteArrayEqualityComparer.Shared);
+    private readonly ImmutableDictionary<byte[], IndexEntry>.Builder _indexBuilder =
+        ImmutableDictionary.CreateBuilder<byte[], IndexEntry>(ByteArrayEqualityComparer.Shared);
     private readonly SegmentStatsTracker _statsTracker = new();
 
     public IndexActor(
@@ -42,7 +43,7 @@ public sealed partial class IndexActor
 
     private async Task ProcessChangesWrittenMessagesAsync()
     {
-        SegmentStatsBuilder? currentOutputSegmentStatsBuilder = null;
+        SegmentStatsBuilder? outputSegmentStatsBuilder = null;
 
         while (await _changesWrittenChannelReader.WaitToReadAsync())
         {
@@ -54,17 +55,15 @@ public sealed partial class IndexActor
                 _clock = VectorClock.Max(_clock, message.Clock);
 
                 // Did the output segment change? Ensure we have a matching SegmentStatsBuilder set up.
-                if (message.OutputSegment != currentOutputSegmentStatsBuilder?.Segment)
+                if (message.OutputSegment != outputSegmentStatsBuilder?.Segment)
                 {
-                    if (currentOutputSegmentStatsBuilder is not null)
+                    if (outputSegmentStatsBuilder is not null)
                     {
-                        _statsTracker.Add(currentOutputSegmentStatsBuilder);
+                        _statsTracker.Add(outputSegmentStatsBuilder);
                     }
 
-                    currentOutputSegmentStatsBuilder = new SegmentStatsBuilder(message.OutputSegment);
+                    outputSegmentStatsBuilder = new SegmentStatsBuilder(message.OutputSegment);
                 }
-
-                var indexBuilder = _index.ToBuilder();
 
                 // TODO: Figure out how to treat messages that happen due to compactions:
                 // - Ensure updates don't clobber the index by replacing newer payloads.
@@ -75,12 +74,12 @@ public sealed partial class IndexActor
                 foreach (var payload in message.Payloads)
                 {
                     // If this payload replaces an existing payload with the same key, mark the previous payload as stale
-                    if (indexBuilder.TryGetValue(payload.Key, out var previousIndexEntry))
+                    if (_indexBuilder.TryGetValue(payload.Key, out var previousIndexEntry))
                     {
-                        if (previousIndexEntry.Segment == currentOutputSegmentStatsBuilder.Segment)
+                        if (previousIndexEntry.Segment == outputSegmentStatsBuilder.Segment)
                         {
                             // Mark entry as stale in current stats builder
-                            currentOutputSegmentStatsBuilder.OnPayloadDisplaced(KeyValuePair.Create(payload.Key, previousIndexEntry.Subrange));
+                            outputSegmentStatsBuilder.OnPayloadDisplaced(KeyValuePair.Create(payload.Key, previousIndexEntry.Subrange));
                         }
                         else
                         {
@@ -89,18 +88,18 @@ public sealed partial class IndexActor
                         }
                     }
 
-                    indexBuilder[payload.Key] = new IndexEntry(message.OutputSegment, payload.Value);
-                    currentOutputSegmentStatsBuilder.OnPayloadAdded(payload);
+                    _indexBuilder[payload.Key] = new IndexEntry(message.OutputSegment, payload.Value);
+                    outputSegmentStatsBuilder.OnPayloadAdded(payload);
                 }
 
                 // Process incoming tombstones. Tombstones will only ever increase the amount of "stale" bytes in the store.
                 foreach (var tombstone in message.Tombstones)
                 {
-                    if (indexBuilder.TryGetValue(tombstone, out var previousIndexEntry))
+                    if (_indexBuilder.TryGetValue(tombstone, out var previousIndexEntry))
                     {
-                        if (previousIndexEntry.Segment == currentOutputSegmentStatsBuilder.Segment)
+                        if (previousIndexEntry.Segment == outputSegmentStatsBuilder.Segment)
                         {
-                            currentOutputSegmentStatsBuilder.OnPayloadDisplaced(KeyValuePair.Create(tombstone, previousIndexEntry.Subrange));
+                            outputSegmentStatsBuilder.OnPayloadDisplaced(KeyValuePair.Create(tombstone, previousIndexEntry.Subrange));
                         }
                         else
                         {
@@ -108,25 +107,20 @@ public sealed partial class IndexActor
                         }
                     }
 
-                    indexBuilder.Remove(tombstone);
-                    currentOutputSegmentStatsBuilder.OnTombstoneAdded(tombstone);
+                    _indexBuilder.Remove(tombstone);
+                    outputSegmentStatsBuilder.OnTombstoneAdded(tombstone);
                 }
 
-                _index = indexBuilder.ToImmutable();
+                var index = _indexBuilder.ToImmutable();
                 var stats = _statsTracker.ToImmutable();
 
                 await _indexUpdatedChannelWriter.WriteAsync(
-                    new IndexUpdated(
-                        Clock: _clock,
-                        Index: _index));
+                    new IndexUpdated(Clock: _clock, Index: index));
 
                 if (!stats.IsEmpty)
                 {
                     await _segmentStatsUpdatedChannelWriter.WriteAsync(
-                        new SegmentStatsUpdated(
-                            Clock: _clock,
-                            Stats: stats,
-                            Index: _index));
+                        new SegmentStatsUpdated(Clock: _clock, Stats: stats, Index: index));
                 }
             }
             finally
@@ -152,7 +146,6 @@ public sealed partial class IndexActor
                 _clock = VectorClock.Max(_clock, message.Clock);
 
                 var statsBuilder = new SegmentStatsBuilder(message.OutputSegment);
-                var indexBuilder = _index.ToBuilder();
 
                 // For every payload:
                 // - If the incoming payload replaces another payload within the source generation range(!)
@@ -165,10 +158,10 @@ public sealed partial class IndexActor
                 {
                     statsBuilder.OnPayloadAdded(payload);
 
-                    if (indexBuilder.TryGetValue(payload.Key, out var indexEntry) &&
+                    if (_indexBuilder.TryGetValue(payload.Key, out var indexEntry) &&
                         indexEntry.Segment.MaxGeneration <= message.OutputSegment.MaxGeneration)
                     {
-                        indexBuilder[payload.Key] = new IndexEntry(message.OutputSegment, payload.Value);
+                        _indexBuilder[payload.Key] = new IndexEntry(message.OutputSegment, payload.Value);
                     }
                     else
                     {
@@ -186,14 +179,11 @@ public sealed partial class IndexActor
 
                 _statsTracker.Add(statsBuilder);
 
-                _index = indexBuilder.ToImmutable();
+                var index = _indexBuilder.ToImmutable();
                 var stats = _statsTracker.ToImmutable();
 
                 await _indexUpdatedChannelWriter.WriteAsync(
-                    new IndexUpdated(
-                        Clock: _clock,
-                        Index: _index));
-
+                    new IndexUpdated(Clock: _clock, Index: index));
 
                 if (!stats.IsEmpty)
                 {
@@ -204,10 +194,7 @@ public sealed partial class IndexActor
                     // configured as a bounded channel with "latest-wins" replacement strategy, so even if
                     // there is an unread element still in the channel, this write is guaranteed to replace it.
                     _segmentStatsUpdatedChannelWriter.TryWrite(
-                        new SegmentStatsUpdated(
-                            Clock: _clock,
-                            Stats: stats,
-                            Index: _index));
+                        new SegmentStatsUpdated(Clock: _clock, Stats: stats, Index: _indexBuilder));
                 }
             }
             finally
