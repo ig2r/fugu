@@ -7,20 +7,27 @@ namespace Fugu.Utils;
 /// </summary>
 public sealed class StoreStatsTracker
 {
-    private readonly ImmutableArray<Segment>.Builder _keysBuilder = ImmutableArray.CreateBuilder<Segment>();
+    // Changes to this field will be relatively infrequent.
+    private ImmutableArray<Segment> _keysArray = [];
+
+    // Depending on load pattern, the stats for completed segments can update quite frequently.
     private readonly ImmutableList<SegmentStats>.Builder _statsBuilder = ImmutableList.CreateBuilder<SegmentStats>();
 
     public StoreStats ToImmutable()
     {
-        return new StoreStats(_keysBuilder.ToImmutable(), _statsBuilder.ToImmutable());
+        return new StoreStats(_keysArray, _statsBuilder.ToImmutable());
     }
+
+    private static Comparer<Segment> SegmentByMinGenerationComparer { get; } = Comparer<Segment>.Create((x, y) =>
+    {
+        return Comparer<long>.Default.Compare(x.MinGeneration, y.MinGeneration);
+    });
 
     public void OnIndexEntryDisplaced(byte[] key, IndexEntry indexEntry)
     {
         var byteCount = key.Length + indexEntry.Subrange.Length;
 
-        // TODO: Use BinarySearch instead
-        var index = _keysBuilder.IndexOf(indexEntry.Segment);
+        var index = _keysArray.BinarySearch(indexEntry.Segment, SegmentByMinGenerationComparer);
         var stats = _statsBuilder[index];
         _statsBuilder[index] = stats with
         {
@@ -30,23 +37,17 @@ public sealed class StoreStatsTracker
 
     public void Add(SegmentStatsBuilder builder)
     {
-        _keysBuilder.Add(builder.Segment);
+        _keysArray = _keysArray.Add(builder.Segment);
         _statsBuilder.Add(builder.Stats);
     }
 
     public void MergeCompactedStats(SegmentStatsBuilder builder)
     {
         // Drop any current entries that are within the range of generations covered by builder.Segment.
-
-        // TODO: Use BinarySearch instead to find start and length.
-        var start = 0;
-        while (start < _keysBuilder.Count && _keysBuilder[start].MinGeneration < builder.Segment.MinGeneration)
-        {
-            start++;
-        }
+        var index = _keysArray.BinarySearch(builder.Segment, SegmentByMinGenerationComparer);
 
         var length = 0;
-        while (start + length < _keysBuilder.Count && _keysBuilder[start + length].MaxGeneration <= builder.Segment.MaxGeneration)
+        while (index + length < _keysArray.Length && _keysArray[index + length].MaxGeneration <= builder.Segment.MaxGeneration)
         {
             length++;
         }
@@ -57,7 +58,7 @@ public sealed class StoreStatsTracker
         }
 
         // Verify the before/after re. live bytes are equal
-        var liveBytesBeforeCompaction = _statsBuilder.Skip(start).Take(length).Sum(s => s.LiveBytes);
+        var liveBytesBeforeCompaction = _statsBuilder.Skip(index).Take(length).Sum(s => s.LiveBytes);
         var liveBytesAfterCompaction = builder.Stats.LiveBytes;
 
         if (liveBytesBeforeCompaction != liveBytesAfterCompaction)
@@ -65,10 +66,12 @@ public sealed class StoreStatsTracker
             throw new InvalidOperationException();
         }
 
-        _keysBuilder.RemoveRange(start, length);
-        _statsBuilder.RemoveRange(start, length);
+        _statsBuilder.RemoveRange(index, length);
+        _statsBuilder.Insert(index, builder.Stats);
 
-        _keysBuilder.Insert(start, builder.Segment);
-        _statsBuilder.Insert(start, builder.Stats);
+        var keysArrayBuilder = _keysArray.ToBuilder();
+        keysArrayBuilder.RemoveRange(index, length);
+        keysArrayBuilder.Insert(index, builder.Segment);
+        _keysArray = keysArrayBuilder.ToImmutable();
     }
 }
