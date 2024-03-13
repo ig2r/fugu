@@ -59,7 +59,7 @@ public sealed class CompactionActor
             }
 
             // Cannot compact if there is only a single completed segment.
-            if (message.Stats.Count < 2)
+            if (message.AllStats.Keys.Count < 2)
             {
                 continue;
             }
@@ -72,8 +72,8 @@ public sealed class CompactionActor
                 // Then derive the utilization ratio of idealized capacity vs. actual total "live" bytes across all non-output
                 // segments. If this ratio drops too far below 1.0, the store is using too many segments for the amount of payload
                 // data it holds and should be compacted to flush out stale data.
-                float capacity = _balancingStrategy.GetIdealizedCapacity(message.Stats.Count);
-                float totalLiveBytes = message.Stats.Sum(s => s.Value.LiveBytes);
+                float capacity = _balancingStrategy.GetIdealizedCapacity(message.AllStats.Keys.Count);
+                float totalLiveBytes = message.AllStats.Stats.Sum(s => s.LiveBytes);
                 float utilization = totalLiveBytes / capacity;
 
                 // Setting the utilization threshold at 0.5 means that up to 50% of usable space within segments can be taken up
@@ -83,9 +83,7 @@ public sealed class CompactionActor
                 if (utilization < 0.5)
                 {
                     // We need to compact. Identify a suitable range of source segments.
-                    var statsArray = message.Stats.Select(kvp => kvp.Value).ToArray();
-                    var (start, length) = ChooseCompactionSourceRange(statsArray);
-                    var sourceStats = message.Stats.Skip(start).Take(length).ToArray();
+                    var (start, length) = ChooseCompactionSourceRange(message.AllStats.Stats);
 
                     compactionClockThreshold++;
 
@@ -93,7 +91,7 @@ public sealed class CompactionActor
                     var outputSlab = await _storage.CreateSlabAsync();
                     var (compactedSegment, compactedChanges) = await CompactSegmentsAsync(
                         outputSlab,
-                        sourceStats.Select(kvp => kvp.Key).ToArray(),
+                        message.AllStats.Keys.Skip(start).Take(length).ToArray(),
                         message.Index);
 
                     // Tell index actor about compaction so that it'll reflect the changes in the main index.
@@ -104,7 +102,7 @@ public sealed class CompactionActor
                             Changes: compactedChanges));
 
                     // Determine by how much the store's total capacity changes with this compaction.
-                    var oldCapacity = sourceStats.Sum(s => s.Value.TotalBytes);
+                    var oldCapacity = message.AllStats.Stats.Skip(start).Take(length).Sum(s => s.TotalBytes);
                     var newCapacity = ChangeSetUtils.GetDataBytes(compactedChanges);
                     var capacityChange = newCapacity - oldCapacity;
 
@@ -113,7 +111,7 @@ public sealed class CompactionActor
                     // that no states before the current compaction clock are observable in snapshots anymore.
                     _pendingCompactionCleanups.Enqueue(new(
                         CompactionClock: compactionClockThreshold,
-                        Segments: sourceStats.Select(kvp => kvp.Key).ToArray(),
+                        Segments: message.AllStats.Keys.Skip(start).Take(length).ToArray(),
                         CapacityChange: capacityChange
                     ));
                 }
@@ -164,7 +162,7 @@ public sealed class CompactionActor
     /// </summary>
     /// <param name="stats">Segment usage stats, provided by IndexActor.</param>
     /// <returns>Start and length of a range of segments to compact.</returns>
-    private static (int Start, int Length) ChooseCompactionSourceRange(SegmentStats[] stats)
+    private static (int Start, int Length) ChooseCompactionSourceRange(IReadOnlyList<SegmentStats> stats)
     {
         // Look for the 2- or 3-element range of segments that has the most skewed ratio between "live" vs.
         // "stale" bytes, that is, in which the amount of stale bytes that can be stripped away per every
@@ -174,9 +172,9 @@ public sealed class CompactionActor
         int start = 0;
         int length = 2;
 
-        for (var i = 0; i < stats.Length - 1; i++)
+        for (var i = 0; i < stats.Count - 1; i++)
         {
-            for (var k = 2; k <= 3 && i + k <= stats.Length; k++)
+            for (var k = 2; k <= 3 && i + k <= stats.Count; k++)
             {
                 var (totalBytes, staleBytes) = stats.Skip(i).Take(k).Aggregate(
                     (TotalBytes: 0f, StaleBytes: 0f),

@@ -3,13 +3,13 @@ using Fugu.Utils;
 
 namespace Fugu.Core.Tests;
 
-public class SegmentStatsTrackerTests
+public class StoreStatsTrackerTests
 {
     [Fact]
     public async Task Add_SegmentWithSinglePayload_ReflectsPayloadInStats()
     {
         // Arrange tracker and some moving bits we need to make it track a (fictional) payload
-        var tracker = new SegmentStatsTracker();
+        var tracker = new StoreStatsTracker();
 
         var storage = new InMemoryStorage();
         var slab = await storage.CreateSlabAsync();
@@ -22,10 +22,11 @@ public class SegmentStatsTrackerTests
         tracker.Add(builder);
 
         var stats = tracker.ToImmutable();
-        var singleStatsItem = Assert.Single(stats);
+        var singleKey = Assert.Single(stats.Keys);
+        var singleStat = Assert.Single(stats.Stats);
 
-        Assert.Same(segment, singleStatsItem.Key);
-        Assert.Equal(payload.Key.Length + payload.Value.Length, singleStatsItem.Value.LiveBytes);
-        Assert.Equal(0, singleStatsItem.Value.StaleBytes);
+        Assert.Same(segment, singleKey);
+        Assert.Equal(payload.Key.Length + payload.Value.Length, singleStat.LiveBytes);
+        Assert.Equal(0, singleStat.StaleBytes);
     }
 }

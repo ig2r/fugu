@@ -17,7 +17,7 @@ public sealed partial class IndexActor
     private VectorClock _clock = default;
     private readonly ImmutableDictionary<byte[], IndexEntry>.Builder _indexBuilder =
         ImmutableDictionary.CreateBuilder<byte[], IndexEntry>(ByteArrayEqualityComparer.Shared);
-    private readonly SegmentStatsTracker _statsTracker = new();
+    private readonly StoreStatsTracker _statsTracker = new();
 
     public IndexActor(
         ChannelReader<ChangesWritten> changesWrittenChannelReader,
@@ -117,10 +117,10 @@ public sealed partial class IndexActor
                 await _indexUpdatedChannelWriter.WriteAsync(
                     new IndexUpdated(Clock: _clock, Index: index));
 
-                if (stats.Count > 0)
+                if (stats.Keys.Count > 0)
                 {
                     await _segmentStatsUpdatedChannelWriter.WriteAsync(
-                        new SegmentStatsUpdated(Clock: _clock, Stats: stats, Index: index));
+                        new SegmentStatsUpdated(Clock: _clock, AllStats: stats, Index: index));
                 }
             }
             finally
@@ -185,7 +185,7 @@ public sealed partial class IndexActor
                 await _indexUpdatedChannelWriter.WriteAsync(
                     new IndexUpdated(Clock: _clock, Index: index));
 
-                if (stats.Count > 0)
+                if (stats.Keys.Count > 0)
                 {
                     // The following write may not succeed when the store is shutting down because the
                     // ChangesWritten processing loop will complete this channel after when it exits.
@@ -194,7 +194,7 @@ public sealed partial class IndexActor
                     // configured as a bounded channel with "latest-wins" replacement strategy, so even if
                     // there is an unread element still in the channel, this write is guaranteed to replace it.
                     _segmentStatsUpdatedChannelWriter.TryWrite(
-                        new SegmentStatsUpdated(Clock: _clock, Stats: stats, Index: _indexBuilder));
+                        new SegmentStatsUpdated(Clock: _clock, AllStats: stats, Index: _indexBuilder));
                 }
             }
             finally

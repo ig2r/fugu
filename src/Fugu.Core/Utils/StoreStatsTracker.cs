@@ -2,17 +2,14 @@
 
 namespace Fugu.Utils;
 
-public sealed class SegmentStatsTracker
+public sealed class StoreStatsTracker
 {
     private readonly ImmutableArray<Segment>.Builder _keysBuilder = ImmutableArray.CreateBuilder<Segment>();
     private readonly ImmutableList<SegmentStats>.Builder _statsBuilder = ImmutableList.CreateBuilder<SegmentStats>();
 
-    public IReadOnlyList<KeyValuePair<Segment, SegmentStats>> ToImmutable()
+    public StoreStats ToImmutable()
     {
-        return Enumerable.Zip(
-            _keysBuilder,
-            _statsBuilder,
-            KeyValuePair.Create).ToArray();
+        return new StoreStats(_keysBuilder.ToImmutable(), _statsBuilder.ToImmutable());
     }
 
     public void OnIndexEntryDisplaced(byte[] key, IndexEntry indexEntry)
