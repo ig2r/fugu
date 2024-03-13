@@ -117,7 +117,7 @@ public sealed partial class IndexActor
                 await _indexUpdatedChannelWriter.WriteAsync(
                     new IndexUpdated(Clock: _clock, Index: index));
 
-                if (!stats.IsEmpty)
+                if (stats.Count > 0)
                 {
                     await _segmentStatsUpdatedChannelWriter.WriteAsync(
                         new SegmentStatsUpdated(Clock: _clock, Stats: stats, Index: index));
@@ -185,7 +185,7 @@ public sealed partial class IndexActor
                 await _indexUpdatedChannelWriter.WriteAsync(
                     new IndexUpdated(Clock: _clock, Index: index));
 
-                if (!stats.IsEmpty)
+                if (stats.Count > 0)
                 {
                     // The following write may not succeed when the store is shutting down because the
                     // ChangesWritten processing loop will complete this channel after when it exits.

@@ -4,35 +4,25 @@ namespace Fugu.Utils;
 
 public sealed class SegmentStatsTracker
 {
-    private readonly ImmutableSortedDictionary<Segment, SegmentStats>.Builder _statsBuilder;
+    private readonly ImmutableArray<Segment>.Builder _keysBuilder = ImmutableArray.CreateBuilder<Segment>();
+    private readonly ImmutableList<SegmentStats>.Builder _statsBuilder = ImmutableList.CreateBuilder<SegmentStats>();
 
-    public SegmentStatsTracker()
+    public IReadOnlyList<KeyValuePair<Segment, SegmentStats>> ToImmutable()
     {
-        var comparer = Comparer<Segment>.Create((x, y) =>
-        {
-            var cmp = Comparer<long>.Default.Compare(x.MinGeneration, y.MinGeneration);
-            if (cmp != 0)
-            {
-                return cmp;
-            }
-
-            return Comparer<long>.Default.Compare(x.MaxGeneration, y.MaxGeneration);
-        });
-
-        _statsBuilder = ImmutableSortedDictionary.CreateBuilder<Segment, SegmentStats>(comparer);
-    }
-
-    public ImmutableSortedDictionary<Segment, SegmentStats> ToImmutable()
-    {
-        return _statsBuilder.ToImmutable();
+        return Enumerable.Zip(
+            _keysBuilder,
+            _statsBuilder,
+            KeyValuePair.Create).ToArray();
     }
 
     public void OnIndexEntryDisplaced(byte[] key, IndexEntry indexEntry)
     {
         var byteCount = key.Length + indexEntry.Subrange.Length;
-        var stats = _statsBuilder[indexEntry.Segment];
 
-        _statsBuilder[indexEntry.Segment] = stats with
+        // TODO: Use BinarySearch instead
+        var index = _keysBuilder.IndexOf(indexEntry.Segment);
+        var stats = _statsBuilder[index];
+        _statsBuilder[index] = stats with
         {
             StaleBytes = stats.StaleBytes + byteCount,
         };
@@ -42,15 +32,24 @@ public sealed class SegmentStatsTracker
     {
         // Drop any current entries that are within the range of generations covered by builder.Segment.
         // This will happen only when merging a compacted segment.
-        var replaced = _statsBuilder.Keys
-            .SkipWhile(s => s.MinGeneration < builder.Segment.MinGeneration)
-            .TakeWhile(s => s.MaxGeneration <= builder.Segment.MaxGeneration)
-            .ToArray();
 
-        if (replaced.Length > 0)
+        // TODO: Use BinarySearch instead to find start and length.
+        var start = 0;
+        while (start < _keysBuilder.Count && _keysBuilder[start].MinGeneration < builder.Segment.MinGeneration)
+        {
+            start++;
+        }
+
+        var length = 0;
+        while (start + length < _keysBuilder.Count && _keysBuilder[start + length].MaxGeneration <= builder.Segment.MaxGeneration)
+        {
+            length++;
+        }
+
+        if (length > 0)
         {
             // Verify the before/after re. live bytes are equal
-            var liveBytesBeforeCompaction = replaced.Sum(s => _statsBuilder[s].LiveBytes);
+            var liveBytesBeforeCompaction = _statsBuilder.Skip(start).Take(length).Sum(s => s.LiveBytes);
             var liveBytesAfterCompaction = builder.Stats.LiveBytes;
 
             if (liveBytesBeforeCompaction != liveBytesAfterCompaction)
@@ -58,9 +57,16 @@ public sealed class SegmentStatsTracker
                 throw new InvalidOperationException();
             }
 
-            _statsBuilder.RemoveRange(replaced);
-        }
+            _keysBuilder.RemoveRange(start, length);
+            _statsBuilder.RemoveRange(start, length);
 
-        _statsBuilder[builder.Segment] = builder.Stats;
+            _keysBuilder.Insert(start, builder.Segment);
+            _statsBuilder.Insert(start, builder.Stats);
+        }
+        else
+        {
+            _keysBuilder.Add(builder.Segment);
+            _statsBuilder.Add(builder.Stats);
+        }
     }
 }

@@ -83,7 +83,7 @@ public sealed class CompactionActor
                 if (utilization < 0.5)
                 {
                     // We need to compact. Identify a suitable range of source segments.
-                    var statsArray = message.Stats.Values.ToArray();
+                    var statsArray = message.Stats.Select(kvp => kvp.Value).ToArray();
                     var (start, length) = ChooseCompactionSourceRange(statsArray);
                     var sourceStats = message.Stats.Skip(start).Take(length).ToArray();
 

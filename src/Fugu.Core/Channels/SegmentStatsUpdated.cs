@@ -11,6 +11,6 @@ namespace Fugu.Channels;
 /// <param name="Index">State of the index at the given clock value.</param>
 public readonly record struct SegmentStatsUpdated(
     VectorClock Clock,
-    IReadOnlyDictionary<Segment, SegmentStats> Stats,
+    IReadOnlyList<KeyValuePair<Segment, SegmentStats>> Stats,
     IReadOnlyDictionary<byte[], IndexEntry> Index
 );
