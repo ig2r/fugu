@@ -177,7 +177,7 @@ public sealed partial class IndexActor
                     statsBuilder.OnTombstoneAdded(tombstone);
                 }
 
-                _statsTracker.Add(statsBuilder);
+                _statsTracker.MergeCompactedStats(statsBuilder);
 
                 var index = _indexBuilder.ToImmutable();
                 var stats = _statsTracker.ToImmutable();
