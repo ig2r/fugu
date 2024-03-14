@@ -29,7 +29,6 @@ await using (var store = await KeyValueStore.CreateAsync(storage))
         }
 
         await store.SaveAsync(changeSet);
-        //await Task.Delay(TimeSpan.FromMilliseconds(1));
     }
 
     Console.WriteLine("Writing completed, pausing for 1 second");
