@@ -15,6 +15,8 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{8E308975
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Fugu.Core.Tests", "tests\Fugu.Core.Tests\Fugu.Core.Tests.csproj", "{6000E752-996B-41CD-B32B-2B0A9FD310D5}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ThroughputDemo", "samples\ThroughputDemo\ThroughputDemo.csproj", "{7928F00B-CD06-4168-BD87-C0B3243EE4CE}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -33,6 +35,10 @@ Global
 		{6000E752-996B-41CD-B32B-2B0A9FD310D5}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{6000E752-996B-41CD-B32B-2B0A9FD310D5}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{6000E752-996B-41CD-B32B-2B0A9FD310D5}.Release|Any CPU.Build.0 = Release|Any CPU
+		{7928F00B-CD06-4168-BD87-C0B3243EE4CE}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{7928F00B-CD06-4168-BD87-C0B3243EE4CE}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{7928F00B-CD06-4168-BD87-C0B3243EE4CE}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{7928F00B-CD06-4168-BD87-C0B3243EE4CE}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -41,6 +47,7 @@ Global
 		{43BF9BBF-B959-467B-B2E0-AA0DE3C187ED} = {3560671A-9321-4483-BC97-9D44C5BD65D6}
 		{6F9FE326-DF6C-4B7E-85E4-48D1B06A9BB5} = {438E5102-19A8-4D26-BB26-A2CD3776D5AB}
 		{6000E752-996B-41CD-B32B-2B0A9FD310D5} = {8E308975-2E17-4DB8-B06B-D9AD174D228F}
+		{7928F00B-CD06-4168-BD87-C0B3243EE4CE} = {438E5102-19A8-4D26-BB26-A2CD3776D5AB}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {C4B4EAC6-3040-4127-BE43-8B04027592AA}
