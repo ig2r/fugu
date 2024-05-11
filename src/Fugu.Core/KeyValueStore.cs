@@ -31,7 +31,7 @@ public sealed class KeyValueStore : IAsyncDisposable
         _compactionActor = compactionActor;
     }
 
-    public static async ValueTask<KeyValueStore> CreateAsync(IBackingStorage storage)
+    public static async Task<KeyValueStore> CreateAsync(IBackingStorage storage)
     {
         const int defaultCapacity = 512;
 
