@@ -19,7 +19,7 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ThroughputDemo", "samples\T
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "DependencyInjectionDemo", "samples\DependencyInjectionDemo\DependencyInjectionDemo.csproj", "{8FFD32A2-77B0-4FFF-B443-FF2DD70AB35E}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Fugu.DependencyInjection", "src\fugu.dependencyinjection\Fugu.DependencyInjection.csproj", "{217B7233-3E0B-4896-9915-9624FD827557}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Fugu.DependencyInjection", "src\Fugu.DependencyInjection\Fugu.DependencyInjection.csproj", "{217B7233-3E0B-4896-9915-9624FD827557}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
