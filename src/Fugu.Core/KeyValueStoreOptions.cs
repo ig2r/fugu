@@ -2,7 +2,7 @@
 
 namespace Fugu;
 
-public class KeyValueStoreOptions
+public sealed class KeyValueStoreOptions
 {
-    public IBackingStorage Storage { get; set; }
+    public required IBackingStorage Storage { get; set; }
 }

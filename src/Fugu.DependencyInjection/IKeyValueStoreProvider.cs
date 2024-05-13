@@ -1,4 +1,4 @@
-﻿namespace Fugu;
+﻿namespace Fugu.DependencyInjection;
 
 public interface IKeyValueStoreProvider
 {

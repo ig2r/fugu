@@ -1,15 +1,13 @@
-﻿using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.DependencyInjection;
-using Fugu;
+﻿using Fugu;
+using Fugu.DependencyInjection;
 using Fugu.IO;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 
 var builder = Host.CreateApplicationBuilder();
 
-builder.Services
-    .AddOptions<KeyValueStoreOptions>()
-    .Configure(options => options.Storage = new InMemoryStorage());
-
-builder.Services.AddSingleton<IKeyValueStoreProvider, KeyValueStoreProvider>();
+var storage = new InMemoryStorage();
+builder.Services.AddKeyValueStore(storage);
 
 var app = builder.Build();
 

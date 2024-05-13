@@ -1,8 +1,8 @@
 ﻿using Microsoft.Extensions.Options;
 
-namespace Fugu;
+namespace Fugu.DependencyInjection;
 
-public sealed class KeyValueStoreProvider : IAsyncDisposable, IKeyValueStoreProvider
+internal sealed class KeyValueStoreProvider : IAsyncDisposable, IKeyValueStoreProvider
 {
     private readonly Lazy<Task<KeyValueStore>> _lazyKeyValueStore;
 
