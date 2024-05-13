@@ -13,7 +13,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Fugu.Core\Fugu.Core.csproj" />
-    <ProjectReference Include="..\..\src\fugu.dependencyinjection\Fugu.DependencyInjection.csproj" />
+    <ProjectReference Include="..\..\src\Fugu.DependencyInjection\Fugu.DependencyInjection.csproj" />
   </ItemGroup>
 
 </Project>
