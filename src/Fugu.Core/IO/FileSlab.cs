@@ -5,13 +5,35 @@ namespace Fugu.IO;
 public sealed class FileSlab : IWritableSlab, ISlab, IDisposable
 {
     private readonly SafeFileHandle _handle;
-    private readonly FileStream _stream;
+    private readonly FileStream? _stream;
 
-    public FileSlab(string path)
+    private FileSlab(string path, FileStream? stream = null)
+    {
+        Path = path;
+
+        // Create a separate handle for reading. Note that we cannot use _stream.SafeFileHandle because that
+        // will be rendered invalid when the output stream is closed after completing a segment.
+        _handle = File.OpenHandle(
+            path,
+            mode: FileMode.Open,
+            access: FileAccess.Read,
+            share: FileShare.ReadWrite,
+            options: FileOptions.Asynchronous);
+
+        _stream = stream;
+    }
+
+    public string Path { get; }
+
+    public long Length => RandomAccess.GetLength(_handle);
+
+    public Stream Output => _stream ?? throw new InvalidOperationException();
+
+    public static FileSlab Create(string path)
     {
         // Create write-only output stream. This creates the file itself. When writing finishes, the
         // SegmentWriter will close the attached PipeWriter, which in turn will close this underlying stream.
-        _stream = new FileStream(path, new FileStreamOptions
+        var stream = new FileStream(path, new FileStreamOptions
         {
             Mode = FileMode.CreateNew,
             Access = FileAccess.Write,
@@ -20,19 +42,13 @@ public sealed class FileSlab : IWritableSlab, ISlab, IDisposable
             BufferSize = 64 * 4096,
         });
 
-        // Create a separate handle for reading. Note that we cannot use _stream.SafeFileHandle because the latter
-        // will become invalid when the output stream is closed after completing a segment.
-        _handle = File.OpenHandle(
-            path,
-            mode: FileMode.Open,
-            access: FileAccess.Read,
-            share: FileShare.ReadWrite,
-            options: FileOptions.Asynchronous);
+        return new FileSlab(path, stream);
     }
 
-    public Stream Output => _stream;
-
-    public long Length => _stream.Length;
+    public static FileSlab Open(string path)
+    {
+        return new FileSlab(path);
+    }
 
     public void Dispose()
     {

@@ -23,7 +23,7 @@ public sealed class FileStorage : IBackingStorage, IDisposable
         var fileName = Path.ChangeExtension(Path.GetRandomFileName(), "slab");
         var filePath = Path.Combine(_path, fileName);
 
-        var slab = new FileSlab(filePath);
+        var slab = FileSlab.Create(filePath);
 
         _slabs.Add(filePath, slab);
 
@@ -37,15 +37,22 @@ public sealed class FileStorage : IBackingStorage, IDisposable
             if (!_slabs.ContainsKey(filePath))
             {
                 // TODO: construct slab from filePath and add it to the dictionary.
+                var slab = FileSlab.Open(filePath);
+                _slabs.Add(filePath, slab);
             }
         }
 
-        return ValueTask.FromResult<IReadOnlyCollection<ISlab>>([]);
+        return ValueTask.FromResult<IReadOnlyCollection<ISlab>>(_slabs.Values);
     }
 
     public ValueTask RemoveSlabAsync(ISlab slab)
     {
-        throw new NotImplementedException();
+        if (slab is FileSlab fileSlab)
+        {
+            _slabs.Remove(fileSlab.Path);
+        }
+
+        return ValueTask.CompletedTask;
     }
 
     public void Dispose()
