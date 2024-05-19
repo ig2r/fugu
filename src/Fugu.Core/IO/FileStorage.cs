@@ -10,10 +10,8 @@ public sealed class FileStorage : IBackingStorage, IDisposable
     {
         ArgumentException.ThrowIfNullOrEmpty(path);
 
-        if (!Path.Exists(path))
-        {
-            throw new InvalidOperationException($"The provided path '{path}' does not exist.");
-        }
+        // Ensure the given path exists.
+        Directory.CreateDirectory(path);
 
         _path = path;
     }
