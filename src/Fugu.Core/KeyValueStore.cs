@@ -59,9 +59,10 @@ public sealed class KeyValueStore : IAsyncDisposable
             SingleReader = true,
         });
 
-        var indexUpdatedChannel = Channel.CreateBounded<IndexUpdated>(new BoundedChannelOptions(defaultCapacity)
+        var indexUpdatedChannel = Channel.CreateBounded<IndexUpdated>(new BoundedChannelOptions(1)
         {
             AllowSynchronousContinuations = true,
+            FullMode = BoundedChannelFullMode.DropOldest,
             SingleWriter = true,
             SingleReader = true,
         });
@@ -69,7 +70,7 @@ public sealed class KeyValueStore : IAsyncDisposable
         var segmentStatsUpdatedChannel = Channel.CreateBounded<SegmentStatsUpdated>(new BoundedChannelOptions(1)
         {
             AllowSynchronousContinuations = false,
-            FullMode = BoundedChannelFullMode.DropNewest,
+            FullMode = BoundedChannelFullMode.DropOldest,
             SingleWriter = true,
             SingleReader = true,
         });
@@ -77,7 +78,7 @@ public sealed class KeyValueStore : IAsyncDisposable
         var oldestObservableSnapshotChangedChannel = Channel.CreateBounded<OldestObservableSnapshotChanged>(new BoundedChannelOptions(1)
         {
             AllowSynchronousContinuations = false,
-            FullMode = BoundedChannelFullMode.DropNewest,
+            FullMode = BoundedChannelFullMode.DropOldest,
             SingleWriter = true,
             SingleReader = true,
         });
@@ -91,16 +92,15 @@ public sealed class KeyValueStore : IAsyncDisposable
             SingleReader = true,
         });
 
-        // Create actors involved in bootstrapping
+        // Index actor must be running during bootstrapping because it needs to build the index from the change sets
+        // that the bootstrapper reads from storage.
         var indexActor = new IndexActor(
             changesWrittenChannel.Reader,
             compactionWrittenChannel.Reader,
             indexUpdatedChannel.Writer,
             segmentStatsUpdatedChannel.Writer);
 
-        var snapshotsActor = new SnapshotsActor(
-            indexUpdatedChannel.Reader,
-            oldestObservableSnapshotChangedChannel.Writer);
+        var indexActorRunTask = indexActor.RunAsync();
 
         // Load existing data
         var bootstrapResult = await Bootstrapper.InitializeStoreAsync(storage, changesWrittenChannel);
@@ -120,6 +120,10 @@ public sealed class KeyValueStore : IAsyncDisposable
             changesWrittenChannel.Writer,
             bootstrapResult.MaxGeneration);
 
+        var snapshotsActor = new SnapshotsActor(
+            indexUpdatedChannel.Reader,
+            oldestObservableSnapshotChangedChannel.Writer);
+
         var compactionActor = new CompactionActor(
             storage,
             balancingStrategy,
@@ -135,7 +139,7 @@ public sealed class KeyValueStore : IAsyncDisposable
             snapshotsActor,
             compactionActor);
 
-        store.Start();
+        store.Start(indexActorRunTask);
 
         return store;
     }
@@ -172,12 +176,12 @@ public sealed class KeyValueStore : IAsyncDisposable
         await _snapshotsActor.WaitForObservableEffectsAsync(clock);
     }
 
-    private void Start()
+    private void Start(Task indexActorRunTask)
     {
         _runTask = Task.WhenAll(
             _allocationActor.RunAsync(),
             _writerActor.RunAsync(),
-            _indexActor.RunAsync(),
+            indexActorRunTask,
             _snapshotsActor.RunAsync(),
             _compactionActor.RunAsync());
     }
