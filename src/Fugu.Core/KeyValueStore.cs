@@ -8,34 +8,27 @@ namespace Fugu;
 
 public sealed class KeyValueStore : IAsyncDisposable
 {
+    private readonly Task _runTask;
     private readonly AllocationActor _allocationActor;
-    private readonly WriterActor _writerActor;
-    private readonly IndexActor _indexActor;
     private readonly SnapshotsActor _snapshotsActor;
-    private readonly CompactionActor _compactionActor;
 
-    private Task? _runTask;
     private bool _disposed;
 
     private KeyValueStore(
+        Task runTask,
         AllocationActor allocationActor,
-        WriterActor writerActor,
-        IndexActor indexActor,
-        SnapshotsActor snapshotsActor,
-        CompactionActor compactionActor)
+        SnapshotsActor snapshotsActor)
     {
+        _runTask = runTask;
         _allocationActor = allocationActor;
-        _writerActor = writerActor;
-        _indexActor = indexActor;
         _snapshotsActor = snapshotsActor;
-        _compactionActor = compactionActor;
     }
 
     public static async Task<KeyValueStore> CreateAsync(IBackingStorage storage)
     {
         const int defaultCapacity = 512;
 
-        // Create channels
+        // Create channels used to pass messages between actors.
         var changeSetAllocatedChannel = Channel.CreateBounded<ChangeSetAllocated>(new BoundedChannelOptions(defaultCapacity)
         {
             AllowSynchronousContinuations = true,
@@ -102,12 +95,12 @@ public sealed class KeyValueStore : IAsyncDisposable
 
         var indexActorRunTask = indexActor.RunAsync();
 
-        // Load existing data
+        // Load existing data.
         var bootstrapResult = await Bootstrapper.InitializeStoreAsync(storage, changesWrittenChannel);
 
+        // Create actors involved in writes and balancing.
         var balancingStrategy = new BalancingStrategy(100, 1.5);
 
-        // Create actors involved in writes and balancing
         var allocationActor = new AllocationActor(
             storage,
             balancingStrategy,
@@ -132,16 +125,16 @@ public sealed class KeyValueStore : IAsyncDisposable
             compactionWrittenChannel.Writer,
             segmentsCompactedChannel.Writer);
 
-        var store = new KeyValueStore(
-            allocationActor,
-            writerActor,
-            indexActor,
-            snapshotsActor,
-            compactionActor);
+        // Start all remaining actors and construct a single compound task that will complete when
+        // all individual actors have terminated.
+        var runTask = Task.WhenAll(
+            allocationActor.RunAsync(),
+            writerActor.RunAsync(),
+            indexActorRunTask,
+            snapshotsActor.RunAsync(),
+            compactionActor.RunAsync());
 
-        store.Start(indexActorRunTask);
-
-        return store;
+        return new KeyValueStore(runTask, allocationActor, snapshotsActor);
     }
 
     /// <summary>
@@ -162,6 +155,14 @@ public sealed class KeyValueStore : IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// Acquires a consistent snapshot of all keys and values in the store.
+    /// </summary>
+    /// <remarks>
+    /// Ensure to dispose the snapshot after use and do not keep a snapshot open for extended
+    /// periods of time.
+    /// </remarks>
+    /// <returns>Snapshot reflecting the current state of data in the store.</returns>
     public ValueTask<Snapshot> GetSnapshotAsync()
     {
         return _snapshotsActor.GetSnapshotAsync();
@@ -174,15 +175,5 @@ public sealed class KeyValueStore : IAsyncDisposable
         // observable in snapshots from the store.
         var clock = await _allocationActor.EnqueueChangeSetAsync(changeSet);
         await _snapshotsActor.WaitForObservableEffectsAsync(clock);
-    }
-
-    private void Start(Task indexActorRunTask)
-    {
-        _runTask = Task.WhenAll(
-            _allocationActor.RunAsync(),
-            _writerActor.RunAsync(),
-            indexActorRunTask,
-            _snapshotsActor.RunAsync(),
-            _compactionActor.RunAsync());
     }
 }
