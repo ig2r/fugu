@@ -49,7 +49,11 @@ public sealed class FileStorage : IBackingStorage, IDisposable
     {
         if (slab is FileSlab fileSlab)
         {
-            _slabs.Remove(fileSlab.Path);
+            if (_slabs.Remove(fileSlab.Path))
+            {
+                fileSlab.Dispose();
+                File.Delete(fileSlab.Path);
+            }
         }
 
         return ValueTask.CompletedTask;
