@@ -28,7 +28,10 @@ public sealed class SegmentWriter
     public static async ValueTask<SegmentWriter> CreateAsync(IWritableSlab outputSlab, long minGeneration, long maxGeneration)
     {
         var segment = new Segment(minGeneration, maxGeneration, outputSlab);
+
+        // By default, completing the pipe writer will automatically close the underlying stream.
         var pipeWriter = PipeWriter.Create(outputSlab.Output);
+
         var initialOffset = WriteSegmentHeader(pipeWriter, minGeneration, maxGeneration);
         await pipeWriter.FlushAsync();
 

@@ -2,7 +2,7 @@
 
 namespace Fugu.IO;
 
-public class InMemorySlab : IWritableSlab, ISlab
+public sealed class InMemorySlab : IWritableSlab, ISlab
 {
     private readonly ArrayBufferWriter<byte> _arrayBufferWriter;
     private readonly ReaderWriterLockSlim _readerWriterLock;
